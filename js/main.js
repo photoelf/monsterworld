@@ -210,11 +210,17 @@ function toast(text) {
 
 // ===== Сохранение =====
 
+// Кастомный спрайт валиден, если это небольшой PNG data-URL
+function validCustomSprite(s) {
+  return typeof s === 'string' && s.startsWith('data:image/png;base64,') && s.length <= 12000 ? s : null;
+}
+
 function dumpOwnedMon(m) {
   return {
     speciesSeed: m.speciesSeed, stage: m.stage, level: m.level,
     exp: m.exp, hp: m.hp, moves: m.moves, status: m.status || null,
     shiny: !!m.shiny, nick: m.nick || null, charm: m.charm || null,
+    customSprite: m.customSprite || null,
   };
 }
 
@@ -223,6 +229,7 @@ function reviveOwnedMon(md) {
     speciesSeed: md.speciesSeed >>> 0, stage: md.stage, level: md.level,
     exp: md.exp, hp: md.hp, moves: md.moves, status: md.status || null,
     shiny: !!md.shiny, nick: md.nick || null, charm: md.charm || null,
+    customSprite: validCustomSprite(md.customSprite),
   };
   for (const mv of m.moves) {
     if (mv.maxPp === undefined) { mv.maxPp = ppForPower(mv.power); mv.pp = mv.maxPp; }
@@ -728,6 +735,7 @@ function tradeMonDump(m) {
   return {
     speciesSeed: m.speciesSeed, stage: m.stage, level: m.level, exp: m.exp,
     shiny: !!m.shiny, nick: m.nick || null,
+    customSprite: m.customSprite || null,   // едет к другу; в публичный пул не попадает (воркер отбрасывает)
     moves: m.moves.map(mv => ({ name: mv.name, type: mv.type, power: mv.power, acc: mv.acc, maxPp: mv.maxPp })),
   };
 }
@@ -742,6 +750,7 @@ function tradeMonRevive(md) {
   const m = makeMonster(seed, stage, level);
   m.shiny = !!md.shiny;
   m.nick = md.nick ? String(md.nick).slice(0, 12) : null;
+  m.customSprite = validCustomSprite(md.customSprite);
   m.exp = clamp(md.exp | 0, 0, expToNext(level) - 1);
   if (Array.isArray(md.moves) && md.moves.length) {
     m.moves = md.moves.slice(0, 4).map(mv => {
@@ -1532,18 +1541,28 @@ function render() {
     }
   }
 
-  // спутник — первый живой монстрик, с подпрыгиванием при ходьбе
+  // спутник — первый живой братишка, с подпрыгиванием при ходьбе
   const leader = G.party.find(m => m.hp > 0);
   if (leader && G.follower) {
     const f = G.follower;
-    const spr = speciesSprite(leader.speciesSeed, leader.stage, leader.shiny);
+    const spr = monSprite(leader);
+    // кастомный спрайт смотрит влево; игрок правее — флипаем, чтобы смотрел на него
+    const flipF = !!leader.customSprite && spr instanceof Image && p.x > f.x;
+    const sw = spr.width, sh = spr.height;
     const bounce = f.moving ? Math.round(Math.abs(Math.sin(f.bounceT * 9)) * 3) : 0;
-    const fx = Math.round((f.x - camX) * TILE) - Math.floor(spr.width / 2);
-    const fy = Math.round((f.y - camY) * TILE) - spr.height + 4 - bounce;
+    const fx = Math.round((f.x - camX) * TILE) - Math.floor(sw / 2);
+    const fy = Math.round((f.y - camY) * TILE) - sh + 4 - bounce;
     // тень под спутником
     ctx.fillStyle = 'rgba(0,0,0,0.25)';
     ctx.fillRect(Math.round((f.x - camX) * TILE) - 4, Math.round((f.y - camY) * TILE) + 2, 8, 2);
-    ctx.drawImage(spr, fx, fy);
+    if (flipF) {
+      ctx.save();
+      ctx.scale(-1, 1);
+      ctx.drawImage(spr, -fx - sw, fy);
+      ctx.restore();
+    } else {
+      ctx.drawImage(spr, fx, fy);
+    }
   }
 
   // игрок в центре (на воде — круги под ним)
@@ -1765,12 +1784,69 @@ function travelToFountain(f) {
 
 // ===== Обменник =====
 
+// ===== Кастомные спрайты (загруженные PNG, смотрят влево) =====
+
+const _customImgs = new Map();
+
+// Image из data-URL с кэшем; null, пока грузится (рисуем процедурный фоллбэк)
+function customSpriteImg(dataUrl) {
+  let img = _customImgs.get(dataUrl);
+  if (!img) {
+    img = new Image();
+    img.src = dataUrl;
+    _customImgs.set(dataUrl, img);
+  }
+  return img.complete && img.naturalWidth ? img : null;
+}
+
+// Спрайт монстрика для отрисовки: кастом или процедурный
+function monSprite(m) {
+  if (m.customSprite) {
+    const img = customSpriteImg(m.customSprite);
+    if (img) return img;
+  }
+  return speciesSprite(m.speciesSeed, m.stage, m.shiny);
+}
+
+// Пикселизация загруженной картинки: автообрезка по прозрачности + даунскейл до 24×24
+function pixelateImage(img) {
+  const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
+  if (!w0 || !h0) return null;
+  const c0 = document.createElement('canvas');
+  c0.width = w0; c0.height = h0;
+  const x0 = c0.getContext('2d');
+  x0.drawImage(img, 0, 0);
+  const d = x0.getImageData(0, 0, w0, h0).data;
+  let minX = w0, minY = h0, maxX = -1, maxY = -1;
+  for (let y = 0; y < h0; y++) {
+    for (let x = 0; x < w0; x++) {
+      if (d[(y * w0 + x) * 4 + 3] > 10) {
+        if (x < minX) minX = x;
+        if (x > maxX) maxX = x;
+        if (y < minY) minY = y;
+        if (y > maxY) maxY = y;
+      }
+    }
+  }
+  if (maxX < 0) { minX = 0; minY = 0; maxX = w0 - 1; maxY = h0 - 1; } // непрозрачных нет — берём всё
+  const bw = maxX - minX + 1, bh = maxY - minY + 1;
+  const scale = Math.min(24 / bw, 24 / bh, 1);   // пиксель-арт ≤24 не трогаем
+  const tw = Math.max(1, Math.round(bw * scale));
+  const th = Math.max(1, Math.round(bh * scale));
+  const c1 = document.createElement('canvas');
+  c1.width = tw; c1.height = th;
+  const x1 = c1.getContext('2d');
+  x1.imageSmoothingEnabled = false;
+  x1.drawImage(c0, minX, minY, bw, bh, 0, 0, tw, th);
+  return c1.toDataURL('image/png');
+}
+
 function monMiniCanvas(m, size) {
   const cv = document.createElement('canvas');
   cv.width = size; cv.height = size;
   const c = cv.getContext('2d');
   c.imageSmoothingEnabled = false;
-  const spr = speciesSprite(m.speciesSeed, m.stage, m.shiny);
+  const spr = monSprite(m);
   c.drawImage(spr, Math.floor((size - spr.width) / 2), Math.floor((size - spr.height) / 2));
   return cv;
 }
@@ -2134,6 +2210,56 @@ function openMonDetail(i) {
     rerender();
   };
   acts.appendChild(bNick);
+
+  // кастомный спрайт: загрузка своего PNG
+  const bSpr = document.createElement('button');
+  bSpr.textContent = m.customSprite ? '🖼 Сменить спрайт' : '🖼 Свой спрайт';
+  bSpr.onclick = () => {
+    const hint = document.getElementById('spr-hint');
+    if (hint) { hint.remove(); return; }
+    const box = document.createElement('div');
+    box.id = 'spr-hint';
+    box.style.cssText = 'width:100%;background:var(--ui-panel);border:2px solid var(--ui-border);border-radius:6px;padding:10px;font-size:12px;line-height:1.5;display:flex;flex-direction:column;gap:8px;';
+    box.innerHTML = 'Лучше всего выглядит <b>пиксель-арт 24×24</b>: PNG с прозрачным фоном, персонаж <b>смотрит влево</b>.' +
+      '<br><span style="opacity:.7">Другие картинки тоже можно — мы обрежем по краям и пикселизуем до 24×24.</span>';
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:8px;justify-content:center;flex-wrap:wrap;';
+    const pickBtn = document.createElement('button');
+    pickBtn.textContent = '📂 Выбрать файл';
+    pickBtn.onclick = () => {
+      const inp = document.getElementById('spr-file');
+      inp.value = '';
+      inp.onchange = () => {
+        const file = inp.files && inp.files[0];
+        if (!file) return;
+        const url = URL.createObjectURL(file);
+        const img = new Image();
+        img.onload = () => {
+          URL.revokeObjectURL(url);
+          const dataUrl = pixelateImage(img);
+          if (!dataUrl || !validCustomSprite(dataUrl)) { toast('Не вышло: картинка не читается или слишком пёстрая.'); return; }
+          m.customSprite = dataUrl;
+          _customImgs.delete(dataUrl); // на случай коллизии — перезагрузим
+          saveGame();
+          toast('🖼 Новый облик для ' + monName(m) + '!');
+          openMonDetail(i);
+        };
+        img.onerror = () => { URL.revokeObjectURL(url); toast('Не удалось открыть картинку.'); };
+        img.src = url;
+      };
+      inp.click();
+    };
+    row.appendChild(pickBtn);
+    if (m.customSprite) {
+      const rmBtn = document.createElement('button');
+      rmBtn.textContent = '↩️ Вернуть обычный';
+      rmBtn.onclick = () => { m.customSprite = null; saveGame(); openMonDetail(i); };
+      row.appendChild(rmBtn);
+    }
+    box.appendChild(row);
+    acts.parentNode.insertBefore(box, acts.nextSibling);
+  };
+  acts.appendChild(bSpr);
 
   if (m.charm || Object.values(G.charms).some(n => n > 0)) {
     const sel = document.createElement('select');

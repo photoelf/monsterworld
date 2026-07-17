@@ -88,7 +88,9 @@ const Battle = {
 
   drawSprite(canvasId, mon, flip, back) {
     const cv = this.el(canvasId);
-    const sp = speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back);
+    // кастомный PNG: рисуем как есть (вид «со спины» к нему неприменим)
+    const custom = mon.customSprite && typeof customSpriteImg === 'function' ? customSpriteImg(mon.customSprite) : null;
+    const sp = custom || speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back);
     cv.width = 32; cv.height = 32;
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingEnabled = false;
@@ -103,6 +105,15 @@ const Battle = {
     }
   },
 
+  refresh(pm, em) {
+    this.card('bt-pcard', pm);
+    this.card('bt-ecard', em);
+    // свой: процедурный — со спины; кастомный смотрит влево — флипаем вправо, на врага
+    if (pm.customSprite) this.drawSprite('bt-pcanvas', pm, true, false);
+    else this.drawSprite('bt-pcanvas', pm, false, true);
+    this.drawSprite('bt-ecanvas', em, false);
+  },
+
   card(elId, mon) {
     const t = TYPE_INFO[monType(mon)];
     const pct = Math.max(0, mon.hp / mon.maxHp * 100);
@@ -113,12 +124,6 @@ const Battle = {
       '<div class="hpnum">' + Math.max(0, mon.hp) + ' / ' + mon.maxHp + ' ОЗ</div>';
   },
 
-  refresh(pm, em) {
-    this.card('bt-pcard', pm);
-    this.card('bt-ecard', em);
-    this.drawSprite('bt-pcanvas', pm, false, true);  // свой — со спины
-    this.drawSprite('bt-ecanvas', em, false);
-  },
 
   // Фигура соперника на сцене: тренер, лидер арены или никого (дикие/PvP)
   setupScene(foe) {
