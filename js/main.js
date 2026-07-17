@@ -178,6 +178,8 @@ const DIR_INDEX = { down: 0, up: 1, left: 2, right: 3 };
 
 function updateHUD() {
   checkAchievements();
+  // кнопка рыбалки появляется только после покупки удочки
+  document.getElementById('t-fish').classList.toggle('hidden', !G.bag.rod);
   const s = document.getElementById('hud-stats');
   const px = Math.floor(G.player.x), py = Math.floor(G.player.y);
   s.innerHTML = '🔮 <b>' + G.orbs + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
@@ -383,6 +385,12 @@ function showStarterPick() {
   document.getElementById('title').classList.add('hidden');
   const panel = document.getElementById('starter-pick');
   panel.classList.remove('hidden');
+  // карта окрестностей спавна — чтобы выбрать стартера под местность
+  const mtw = IS_MOBILE && window.innerHeight > window.innerWidth ? 110 : 160;
+  drawMiniMap(document.getElementById('starter-map'), mtw, Math.round(mtw * 0.66), G.spawn.x, G.spawn.y);
+  const cl = World.climateAt(Math.floor(G.spawn.x), Math.floor(G.spawn.y));
+  document.getElementById('starter-climate').textContent =
+    '✚ — место старта. Климат: ' + (cl === 'cold' ? '❄️ снега' : cl === 'hot' ? '🏜️ пустыня' : '🌿 умеренный') + '.';
   const box = document.getElementById('starters');
   box.innerHTML = '';
   const forced = ['fire', 'water', 'grass'];
@@ -822,6 +830,7 @@ function friendError(msg) {
   document.getElementById('friend-error').textContent = msg || '';
 }
 
+// Компактная строка монстрика для обмена: спрайт, имя, уровень, тип
 function friendMonRow(md, extraHtml) {
   const temp = tradeMonRevive(md);
   const row = document.createElement('div');
@@ -832,8 +841,6 @@ function friendMonRow(md, extraHtml) {
   info.className = 'info';
   info.innerHTML = '<span class="nm">' + (temp.shiny ? '✨' : '') + monName(temp) + '</span> Ур.' + temp.level +
     ' <span style="color:' + t.color + '">' + t.ru + '</span>' +
-    '<div style="opacity:.75;font-size:11px">ОЗ ' + temp.maxHp + ' · АТК ' + temp.atk + ' · ЗАЩ ' + temp.def + ' · СКР ' + temp.spd + '</div>' +
-    '<div style="opacity:.7;font-size:10px">' + temp.moves.map(mv => mv.name).join(' · ') + '</div>' +
     (extraHtml || '');
   row.appendChild(info);
   return row;
@@ -1286,17 +1293,22 @@ function step(dt) {
   }
 
   let vx = 0, vy = 0;
-  if (keys.has('ArrowLeft') || keys.has('KeyA')) vx -= 1;
-  if (keys.has('ArrowRight') || keys.has('KeyD')) vx += 1;
-  if (keys.has('ArrowUp') || keys.has('KeyW')) vy -= 1;
-  if (keys.has('ArrowDown') || keys.has('KeyS')) vy += 1;
+  if (typeof joy !== 'undefined' && (joy.x || joy.y)) {
+    vx = joy.x; vy = joy.y;
+  } else {
+    if (keys.has('ArrowLeft') || keys.has('KeyA')) vx -= 1;
+    if (keys.has('ArrowRight') || keys.has('KeyD')) vx += 1;
+    if (keys.has('ArrowUp') || keys.has('KeyW')) vy -= 1;
+    if (keys.has('ArrowDown') || keys.has('KeyS')) vy += 1;
+  }
 
   const p = G.player;
   const speed = keys.has('Shift') ? 8.6 : 5.2;  // Shift — бег
   p.moving = !!(vx || vy);
   if (p.moving) {
-    if (vy > 0) p.dir = 'down'; else if (vy < 0) p.dir = 'up';
-    if (vx > 0) p.dir = 'right'; else if (vx < 0) p.dir = 'left';
+    // спрайт смотрит вдоль доминирующей оси (важно для плавного джойстика)
+    if (Math.abs(vx) > Math.abs(vy)) p.dir = vx > 0 ? 'right' : 'left';
+    else p.dir = vy > 0 ? 'down' : 'up';
     const len = Math.hypot(vx, vy);
     const dx = vx / len * speed * dt, dy = vy / len * speed * dt;
 
@@ -1636,19 +1648,12 @@ function toggleMap() {
   panel.classList.remove('hidden');
 }
 
-function renderMap() {
-  const cv = document.getElementById('map-canvas');
-  // на мобильном в портрете карта тоже портретная — под пропорции экрана
-  let tw = MAP_TILES_W, th = MAP_TILES_H;
-  if (IS_MOBILE && window.innerHeight > window.innerWidth) {
-    tw = 150;
-    th = Math.min(300, Math.round(tw * (window.innerHeight * 0.55) / Math.max(200, window.innerWidth - 24)));
-  }
+// Общая отрисовка миникарты вокруг точки (cx, cy) на канвас tw×th тайлов
+function drawMiniMap(cv, tw, th, centerX, centerY) {
   cv.width = tw * MAP_PX;
   cv.height = th * MAP_PX;
   const c = cv.getContext('2d');
-  const px = Math.floor(G.player.x), py = Math.floor(G.player.y);
-  const x0 = px - tw / 2, y0 = py - th / 2;
+  const x0 = Math.floor(centerX) - tw / 2, y0 = Math.floor(centerY) - th / 2;
 
   for (let ty = 0; ty < th; ty++) {
     for (let tx = 0; tx < tw; tx++) {
@@ -1665,12 +1670,27 @@ function renderMap() {
     c.fillStyle = '#4fc3ff';
     c.fillRect(mx - 3, my - 3, 6, 6);
   }
-  // игрок — крестик в центре
-  const cx = tw / 2 * MAP_PX, cy = th / 2 * MAP_PX;
+  // центр — крестик
+  const ccx = tw / 2 * MAP_PX, ccy = th / 2 * MAP_PX;
   c.fillStyle = '#ffffff';
-  c.fillRect(cx - 6, cy - 1, 12, 3); c.fillRect(cx - 1, cy - 6, 3, 12);
+  c.fillRect(ccx - 6, ccy - 1, 12, 3); c.fillRect(ccx - 1, ccy - 6, 3, 12);
   c.fillStyle = '#e02020';
-  c.fillRect(cx - 5, cy, 10, 1); c.fillRect(cx, cy - 5, 1, 10);
+  c.fillRect(ccx - 5, ccy, 10, 1); c.fillRect(ccx, ccy - 5, 1, 10);
+}
+
+// Размер карты: на мобильном в портрете — портретная, иначе — широкая
+function mapDims() {
+  if (IS_MOBILE && window.innerHeight > window.innerWidth) {
+    const tw = 150;
+    const th = Math.min(300, Math.round(tw * (window.innerHeight * 0.55) / Math.max(200, window.innerWidth - 24)));
+    return [tw, th];
+  }
+  return [MAP_TILES_W, MAP_TILES_H];
+}
+
+function renderMap() {
+  const [tw, th] = mapDims();
+  drawMiniMap(document.getElementById('map-canvas'), tw, th, G.player.x, G.player.y);
 
   // кнопки быстрого перемещения
   const travel = document.getElementById('map-travel');
@@ -1946,6 +1966,9 @@ function toggleDex() {
 
 // ===== Панель команды =====
 
+// Какие карточки в «Команде» развёрнуты (переживает перерисовку панели)
+const _partyExpanded = new Set();
+
 function togglePartyPanel() {
   const panel = document.getElementById('party-panel');
   if (G.state === 'party') {
@@ -1979,11 +2002,22 @@ function togglePartyPanel() {
       ' <span style="color:' + t.color + '">' + t.ru + '</span>' +
       (st.evolveLevel ? ' <span style="opacity:.6">эво на ' + st.evolveLevel + '</span>' : '') +
       '<div class="bar"><i class="' + (pct < 30 ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
-      '<div style="opacity:.75;font-size:11px">' + m.hp + '/' + m.maxHp + ' ОЗ · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd +
-      ' · опыт ' + m.exp + '/' + expToNext(m.level) + '</div>';
+      '<div style="opacity:.75;font-size:11px">' + m.hp + '/' + m.maxHp + ' ОЗ</div>';
+    row.appendChild(info);
+
+    // подробности (статы, атаки, действия) — скрыты за кнопкой
+    const details = document.createElement('div');
+    details.style.cssText = 'width:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;';
+    if (!_partyExpanded.has(i)) details.classList.add('hidden');
+    const statLine = document.createElement('div');
+    statLine.style.cssText = 'width:100%;opacity:.75;font-size:11px;';
+    statLine.innerHTML = 'АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd +
+      ' · опыт ' + m.exp + '/' + expToNext(m.level);
+    details.appendChild(statLine);
     // атаки: клик — поднять выше в списке
     const mvDiv = document.createElement('div');
     mvDiv.className = 'mv';
+    mvDiv.style.width = '100%';
     m.moves.forEach((mv, mi) => {
       const mb = document.createElement('button');
       mb.style.cssText = 'font-size:10px;padding:2px 6px;margin:2px 3px 0 0;';
@@ -1998,8 +2032,17 @@ function togglePartyPanel() {
       };
       mvDiv.appendChild(mb);
     });
-    info.appendChild(mvDiv);
-    row.appendChild(info);
+    details.appendChild(mvDiv);
+
+    const bMore = document.createElement('button');
+    const setMoreLabel = () => { bMore.textContent = _partyExpanded.has(i) ? 'Свернуть ▴' : 'Подробнее ▾'; };
+    setMoreLabel();
+    bMore.onclick = () => {
+      if (_partyExpanded.has(i)) _partyExpanded.delete(i); else _partyExpanded.add(i);
+      details.classList.toggle('hidden');
+      setMoreLabel();
+    };
+    row.appendChild(bMore);
 
     // кличка
     const bNick = document.createElement('button');
@@ -2012,7 +2055,7 @@ function togglePartyPanel() {
       G.state = 'world'; togglePartyPanel();
       updateHUD(); saveGame();
     };
-    row.appendChild(bNick);
+    details.appendChild(bNick);
 
     // амулет: выпадающий выбор
     if (m.charm || Object.values(G.charms).some(n => n > 0)) {
@@ -2040,7 +2083,7 @@ function togglePartyPanel() {
         G.state = 'world'; togglePartyPanel();
         updateHUD(); saveGame();
       };
-      row.appendChild(sel);
+      details.appendChild(sel);
     }
     // камень эволюции
     if (G.bag.stone > 0 && st.evolveLevel !== null) {
@@ -2062,7 +2105,7 @@ function togglePartyPanel() {
         G.state = 'world'; togglePartyPanel();
         updateHUD(); saveGame();
       };
-      row.appendChild(bStone);
+      details.appendChild(bStone);
     }
     // научить со свитка
     if (G.scrolls.length) {
@@ -2070,7 +2113,7 @@ function togglePartyPanel() {
       bTeach.textContent = '📜 (' + G.scrolls.length + ')';
       bTeach.title = 'Научить умению со свитка';
       bTeach.onclick = () => openTeach(m);
-      row.appendChild(bTeach);
+      details.appendChild(bTeach);
     }
     // эфир
     if (G.bag.ether > 0 && m.moves.some(mv => mv.pp < mv.maxPp)) {
@@ -2083,7 +2126,7 @@ function togglePartyPanel() {
         G.state = 'world'; togglePartyPanel();
         updateHUD(); saveGame();
       };
-      row.appendChild(bEth);
+      details.appendChild(bEth);
     }
 
     if (m.hp < m.maxHp && G.bag.potion > 0) {
@@ -2097,7 +2140,7 @@ function togglePartyPanel() {
         togglePartyPanel();
         updateHUD(); saveGame();
       };
-      row.appendChild(bPot);
+      details.appendChild(bPot);
     }
     if (m.status && G.bag.tonic > 0) {
       const bTon = document.createElement('button');
@@ -2110,7 +2153,7 @@ function togglePartyPanel() {
         togglePartyPanel();
         updateHUD(); saveGame();
       };
-      row.appendChild(bTon);
+      details.appendChild(bTon);
     }
     if (i > 0) {
       const bLead = document.createElement('button');
@@ -2122,7 +2165,7 @@ function togglePartyPanel() {
         togglePartyPanel();
         updateHUD(); saveGame();
       };
-      row.appendChild(bLead);
+      details.appendChild(bLead);
     }
     if (G.party.length > 1) {
       const bBox = document.createElement('button');
@@ -2133,8 +2176,9 @@ function togglePartyPanel() {
         G.state = 'world';
         togglePartyPanel();
       };
-      row.appendChild(bBox);
+      details.appendChild(bBox);
     }
+    row.appendChild(details);
     rows.appendChild(row);
   });
   panel.classList.remove('hidden');
@@ -2250,19 +2294,46 @@ const IS_MOBILE = /[?&]desktop/.test(location.search) ? false :
                   'ontouchstart' in window || navigator.maxTouchPoints > 0 ||
                   (window.matchMedia && matchMedia('(pointer: coarse)').matches);
 
+// Вектор виртуального джойстика; step() читает его напрямую
+const joy = { x: 0, y: 0 };
+
 function initTouch() {
   if (!IS_MOBILE) return;
   document.getElementById('touch-ui').classList.remove('hidden');
-  // крестовина: зажатие = зажатая клавиша
-  document.querySelectorAll('#dpad .tbtn').forEach(btn => {
-    const k = btn.dataset.k;
-    const press = e => { e.preventDefault(); keys.add(k); btn.classList.add('on'); };
-    const release = () => { keys.delete(k); btn.classList.remove('on'); };
-    btn.addEventListener('pointerdown', press);
-    btn.addEventListener('pointerup', release);
-    btn.addEventListener('pointercancel', release);
-    btn.addEventListener('pointerleave', release);
+  // джойстик: тянем ручку от центра, персонаж идёт в ту же сторону (360°)
+  const base = document.getElementById('joy-base');
+  const knob = document.getElementById('joy-knob');
+  const R = 44;          // ход ручки, px
+  const DEAD = 0.22;     // мёртвая зона
+  let pid = null;
+  const update = e => {
+    const rect = base.getBoundingClientRect();
+    let dx = e.clientX - (rect.left + rect.width / 2);
+    let dy = e.clientY - (rect.top + rect.height / 2);
+    const d = Math.hypot(dx, dy) || 1;
+    if (d > R) { dx = dx / d * R; dy = dy / d * R; }
+    knob.style.transform = 'translate(' + dx + 'px,' + dy + 'px)';
+    const nx = dx / R, ny = dy / R;
+    if (Math.hypot(nx, ny) < DEAD) { joy.x = 0; joy.y = 0; }
+    else { joy.x = nx; joy.y = ny; }
+  };
+  base.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    pid = e.pointerId;
+    base.setPointerCapture(pid);
+    base.classList.add('on');
+    update(e);
   });
+  base.addEventListener('pointermove', e => { if (e.pointerId === pid) update(e); });
+  const joyEnd = e => {
+    if (e.pointerId !== pid) return;
+    pid = null;
+    joy.x = 0; joy.y = 0;
+    knob.style.transform = '';
+    base.classList.remove('on');
+  };
+  base.addEventListener('pointerup', joyEnd);
+  base.addEventListener('pointercancel', joyEnd);
   // бег — переключатель
   const runBtn = document.getElementById('t-run');
   runBtn.addEventListener('pointerdown', e => {

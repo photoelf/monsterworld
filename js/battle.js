@@ -28,7 +28,7 @@ const Battle = {
     this.el('bt-log').textContent = text;
   },
 
-  // options: [{label, small, disabled}], cancellable -> Esc возвращает -1
+  // options: [{label, small, disabled}], cancellable -> Esc или кнопка «Назад» возвращает -1
   menu(options, cancellable) {
     const menuEl = this.el('bt-menu');
     menuEl.innerHTML = '';
@@ -41,6 +41,18 @@ const Battle = {
         b.onclick = () => this._pickMenu(i, options);
         menuEl.appendChild(b);
       });
+      if (cancellable) {
+        const back = document.createElement('button');
+        back.innerHTML = '‹ Назад';
+        back.onclick = () => {
+          if (!this._menuResolve) return;
+          const r = this._menuResolve;
+          this._menuResolve = null;
+          menuEl.innerHTML = '';
+          r.res(-1);
+        };
+        menuEl.appendChild(back);
+      }
       this._menuOptions = options;
     });
   },
@@ -257,7 +269,7 @@ const Battle = {
       small: m.hp + '/' + m.maxHp + ' ОЗ',
       disabled: m.hp <= 0 || i === currentIdx,
     }));
-    this.note(forced ? 'Кого отправить в бой?' : 'Кого выбрать? (Esc — назад)');
+    this.note(forced ? 'Кого отправить в бой?' : 'Кого выбрать?');
     return await this.menu(opts, !forced);
   },
 
@@ -326,7 +338,7 @@ const Battle = {
           if (si === -1) continue;
           playerMove = Object.assign({}, STRUGGLE);
         } else {
-          this.note('Какое умение? (Esc — назад)');
+          this.note('Какое умение?');
           const mi = await this.menu(pm.moves.map(mv => {
             const eff = effMult(mv.type, monType(em));
             const hint = eff > 1 ? ' · ×2 💥' : eff < 1 ? ' · ×½ 🛡' : '';
@@ -365,7 +377,7 @@ const Battle = {
               G.storage.push(em);
               await this.say(monName(em) + ' отправлен в Монстрохранилище (B).');
             } else {
-              this.note('Кто уступит место? (Esc — нового в хранилище)');
+              this.note('Кто уступит место? (Назад — нового в хранилище)');
               const ri = await this.menu(party.map(m => ({
                 label: monName(m) + ' (Ур.' + m.level + ')',
                 small: m.hp + '/' + m.maxHp + ' ОЗ',
@@ -397,7 +409,7 @@ const Battle = {
           await this.say('Сумка пуста! Загляни в лавку в городе.');
           continue;
         }
-        this.note('Какой предмет? (Esc — назад)');
+        this.note('Какой предмет?');
         const ii = await this.menu(usable, true);
         if (ii === -1) continue;
         const item = usable[ii];
