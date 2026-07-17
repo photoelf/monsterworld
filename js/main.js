@@ -470,7 +470,7 @@ async function startArenaBattle(master) {
   G.state = 'battle';
   const team = World.masterTeam(master);
   const result = await Battle.run({
-    kind: 'trainer', enemyParty: team, trainerName: master.name,
+    kind: 'trainer', foe: 'master', enemyParty: team, trainerName: master.name,
     reward: 200 + master.level * 20,
     badgeId: master.id,
   });
@@ -1394,7 +1394,22 @@ function step(dt) {
 
 // ===== Рендер =====
 
-const VIEW_W = 30, VIEW_H = 20;
+let VIEW_W = 30, VIEW_H = 20;
+
+// На мобильном канвас занимает весь экран; логическое разрешение подбирается так,
+// чтобы по короткой стороне влезало ~11 тайлов (целочисленный масштаб — чёткие пиксели).
+function resizeCanvas() {
+  if (!IS_MOBILE) return;
+  const vw = window.innerWidth, vh = window.innerHeight;
+  const z = Math.max(2, Math.round(Math.min(vw, vh) / 180)); // CSS-пикселей на игровой пиксель
+  canvas.width = Math.ceil(vw / z);
+  canvas.height = Math.ceil(vh / z);
+  canvas.style.width = vw + 'px';
+  canvas.style.height = vh + 'px';
+  VIEW_W = canvas.width / TILE;
+  VIEW_H = canvas.height / TILE;
+  if (G.state === 'world' || G.state === 'party') render();
+}
 
 function render() {
   if (!tileAtlas) return;
@@ -1403,9 +1418,10 @@ function render() {
   const camX = p.x - VIEW_W / 2;
   const camY = p.y - VIEW_H / 2;
   const x0 = Math.floor(camX), y0 = Math.floor(camY);
+  const x1 = Math.floor(camX + VIEW_W), y1 = Math.floor(camY + VIEW_H);
 
-  for (let ty = y0; ty <= y0 + VIEW_H; ty++) {
-    for (let tx = x0; tx <= x0 + VIEW_W; tx++) {
+  for (let ty = y0; ty <= y1; ty++) {
+    for (let tx = x0; tx <= x1; tx++) {
       const dx = Math.round((tx - camX) * TILE);
       const dy = Math.round((ty - camY) * TILE);
       drawTile(ctx, World.tileAt(tx, ty), tx, ty, dx, dy, TILE);
@@ -2221,9 +2237,13 @@ function initTitle() {
 
 // ===== Тач-управление =====
 
+const IS_MOBILE = /[?&]desktop/.test(location.search) ? false :
+                  /[?&]mobile/.test(location.search) ? true :
+                  'ontouchstart' in window || navigator.maxTouchPoints > 0 ||
+                  (window.matchMedia && matchMedia('(pointer: coarse)').matches);
+
 function initTouch() {
-  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
-  if (!isTouch) return;
+  if (!IS_MOBILE) return;
   document.getElementById('touch-ui').classList.remove('hidden');
   // крестовина: зажатие = зажатая клавиша
   document.querySelectorAll('#dpad .tbtn').forEach(btn => {
@@ -2253,6 +2273,12 @@ function initTouch() {
 function main() {
   canvas = document.getElementById('game');
   ctx = canvas.getContext('2d');
+  if (IS_MOBILE) {
+    document.body.classList.add('mobile');
+    resizeCanvas();
+    window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 250));
+  }
   buildTileAtlas();
   playerSprite = makePersonSprite('#d84848', '#6b3a1e');
   trainerSprite = makePersonSprite('#3a6ab0', '#2a2a38');
@@ -2272,6 +2298,7 @@ function main() {
   function frame(now) {
     const dt = Math.min(0.05, (now - last) / 1000);
     last = now;
+    if (document.body.dataset.state !== G.state) document.body.dataset.state = G.state;
     step(dt);
     if (G.state === 'world' || G.state === 'party') render();
     requestAnimationFrame(frame);

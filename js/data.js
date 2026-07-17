@@ -308,9 +308,9 @@ function grantExp(m, amount) {
 const _spriteCache = new Map();
 
 // Генерирует симметричного пиксельного монстрика на canvas
-// shiny = редкая золотая вариация
-function speciesSprite(speciesSeed, stage, shiny) {
-  const key = speciesSeed + ':' + stage + (shiny ? ':s' : '');
+// shiny = редкая золотая вариация; back = вид со спины (без глаз)
+function speciesSprite(speciesSeed, stage, shiny, back) {
+  const key = speciesSeed + ':' + stage + (shiny ? ':s' : '') + (back ? ':b' : '');
   if (_spriteCache.has(key)) return _spriteCache.get(key);
 
   const st = getSpecies(speciesSeed).stages[stage];
@@ -382,8 +382,8 @@ function speciesSprite(speciesSeed, stage, shiny) {
       ctx.fillRect(x, y, 1, 1);
     }
   }
-  // глаза: первая достаточно широкая строка сверху
-  for (let y = 1; y < size - 2; y++) {
+  // глаза: первая достаточно широкая строка сверху (со спины глаз не видно)
+  for (let y = 1; !back && y < size - 2; y++) {
     let w = 0;
     for (let x = 0; x < size; x++) if (full(x, y)) w++;
     if (w >= size * 0.45) {

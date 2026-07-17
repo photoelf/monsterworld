@@ -105,15 +105,34 @@
   .starter canvas { width: 128px; height: 128px; image-rendering: pixelated; }
   .starter .nm { color: var(--ui-accent); font-weight: bold; margin-top: 6px; }
   .starter .tp { font-size: 12px; opacity: .85; }
-  /* ---------- Бой ---------- */
-  #battle { justify-content: flex-start; padding: 18px; gap: 8px; background: rgba(12,12,20,.96); }
-  #bt-scene { display: flex; width: 100%; flex: 1; position: relative; }
-  .bt-side { flex: 1; display: flex; align-items: center; justify-content: center; gap: 16px; }
-  .bt-side canvas { width: 176px; height: 176px; image-rendering: pixelated; }
+  /* ---------- Бой (покемон-стиль: враг сверху справа, свой снизу слева) ---------- */
+  #battle {
+    justify-content: flex-end; padding: 14px; gap: 10px;
+    background: linear-gradient(#181c30 0%, #23284a 15%, #1b2e20 17%, #131f17 100%);
+  }
+  #bt-scene {
+    width: 100%; max-width: 640px; flex: 1; min-height: 0;
+    display: flex; flex-direction: column; justify-content: space-evenly;
+  }
+  .bt-row { display: flex; justify-content: space-between; gap: 12px; width: 100%; }
+  .bt-row.enemy { align-items: flex-start; }
+  .bt-row.player { align-items: flex-end; }
+  .bt-stand { position: relative; display: flex; align-items: flex-end; gap: 10px; padding: 0 10px 10px; }
+  .bt-stand::after {
+    content: ''; position: absolute; left: 50%; bottom: 2px; transform: translateX(-50%);
+    width: 105%; height: 22px; border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(110,150,110,.5), rgba(0,0,0,0) 72%);
+  }
+  .bt-stand canvas { position: relative; z-index: 1; image-rendering: pixelated; }
+  #bt-ecanvas { width: 128px; height: 128px; }
+  #bt-pcanvas { width: 184px; height: 184px; }
+  #bt-tcanvas { width: 72px; height: 72px; opacity: .95; }
   .bt-card {
     background: var(--ui-panel); border: 2px solid var(--ui-border); border-radius: 6px;
-    padding: 8px 12px; min-width: 190px; text-align: left; font-size: 14px;
+    padding: 8px 12px; min-width: 190px; max-width: 260px; text-align: left; font-size: 14px;
+    align-self: flex-start; height: fit-content;
   }
+  .bt-row.player .bt-card { align-self: flex-end; }
   .bt-card .nm { color: var(--ui-accent); font-weight: bold; }
   .bt-card .bar { height: 8px; margin-top: 5px; }
   .bt-card .hpnum { font-size: 12px; opacity: .8; margin-top: 3px; }
@@ -122,14 +141,17 @@
   .flash { animation: flash .3s; }
   @keyframes flash { 0%,100%{filter:none} 50%{filter:brightness(3)} }
   #bt-log {
-    width: 100%; min-height: 58px; background: var(--ui-panel);
+    width: 100%; max-width: 640px; min-height: 58px; background: var(--ui-panel);
     border: 2px solid var(--ui-border); border-radius: 6px;
     padding: 10px 14px; font-size: 16px; text-align: left; cursor: pointer;
   }
   #bt-log .next { color: var(--ui-accent); float: right; animation: blink 1s infinite; }
   @keyframes blink { 50% { opacity: 0; } }
-  #bt-menu { display: flex; gap: 8px; width: 100%; flex-wrap: wrap; justify-content: center; }
-  #bt-menu button { min-width: 150px; }
+  #bt-menu {
+    display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 8px; width: 100%; max-width: 640px;
+  }
+  #bt-menu:empty { display: none; }
   #bt-menu button small { display: block; font-size: 11px; opacity: .75; }
   /* ---------- Команда ---------- */
   #party-panel { gap: 8px; }
@@ -177,23 +199,33 @@
   .arow .ic { font-size: 20px; }
   .arow .nm { color: var(--ui-accent); font-weight: bold; }
   /* ---------- Тач-управление ---------- */
-  #touch-ui { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+  #touch-ui { position: fixed; inset: 0; pointer-events: none; z-index: 60; display: none; }
+  /* кнопки видны только на игровом поле (и во время рыбалки) */
+  body[data-state="world"] #touch-ui:not(.hidden),
+  body[data-state="fishing"] #touch-ui:not(.hidden) { display: block; }
   .tbtn {
     pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
     background: rgba(38,38,54,.72); border: 2px solid var(--ui-border); border-radius: 10px;
     display: flex; align-items: center; justify-content: center;
-    font-size: 22px; color: var(--ui-text);
+    font-size: 24px; color: var(--ui-text);
   }
   .tbtn.on, .tbtn:active { background: rgba(255,215,94,.35); border-color: var(--ui-accent); }
   #dpad {
-    position: absolute; left: 10px; bottom: 10px;
-    display: grid; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 54px); gap: 4px;
+    position: absolute; left: max(10px, env(safe-area-inset-left)); bottom: max(12px, env(safe-area-inset-bottom));
+    display: grid; grid-template-columns: repeat(3, 60px); grid-template-rows: repeat(3, 60px); gap: 4px;
   }
-  #touch-actions { position: absolute; right: 12px; bottom: 22px; display: flex; flex-direction: column; gap: 12px; }
-  #touch-actions .tbtn { width: 58px; height: 58px; border-radius: 50%; }
-  #touch-menu { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
-  #touch-menu .tbtn { width: 44px; height: 34px; font-size: 17px; }
-  /* ---------- Мобильная адаптация ---------- */
+  #touch-actions {
+    position: absolute; right: max(14px, env(safe-area-inset-right));
+    bottom: max(26px, calc(env(safe-area-inset-bottom) + 14px));
+    display: flex; flex-direction: column; gap: 14px;
+  }
+  #touch-actions .tbtn { width: 62px; height: 62px; border-radius: 50%; }
+  #touch-menu {
+    position: absolute; top: max(4px, env(safe-area-inset-top)); left: 50%; transform: translateX(-50%);
+    display: flex; gap: 6px;
+  }
+  #touch-menu .tbtn { width: 46px; height: 36px; font-size: 17px; }
+  /* ---------- Узкое окно на десктопе ---------- */
   @media (max-width: 720px) {
     .prow, .srow, .arow { width: 94vw; }
     #starters { flex-wrap: wrap; }
@@ -202,6 +234,56 @@
     h1 { font-size: 22px; }
     #hint { display: none; }
   }
+  /* ---------- Мобильный режим (тач-устройства) ---------- */
+  body.mobile #wrap { width: 100vw; max-width: none; height: 100dvh; top: 0; transform: none; margin: 0; }
+  body.mobile #game { width: 100vw; height: 100dvh; border: none; border-radius: 0; }
+  body.mobile #hint { display: none; }
+  body.mobile #hud { display: none; }
+  body.mobile[data-state="world"] #hud, body.mobile[data-state="fishing"] #hud {
+    display: flex; top: max(6px, env(safe-area-inset-top)); font-size: 11px; gap: 6px;
+  }
+  body.mobile #hud-stats { font-size: 10px; max-width: 44vw; }
+  body.mobile .chip { min-width: 44px; }
+  body.mobile .chip .nm { font-size: 9px; max-width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  body.mobile .chip .lv { font-size: 9px; }
+  body.mobile #toast {
+    top: calc(max(6px, env(safe-area-inset-top)) + 100px);
+    font-size: 13px; max-width: 92vw; white-space: normal; text-align: center;
+  }
+  body.mobile #touch-menu { top: calc(max(6px, env(safe-area-inset-top)) + 56px); }
+  /* панели — полноэкранные страницы с крупными кнопками */
+  body.mobile .overlay {
+    justify-content: flex-start; overflow-y: auto; overflow-x: hidden; gap: 10px;
+    padding: max(10px, env(safe-area-inset-top)) 12px calc(14px + env(safe-area-inset-bottom));
+  }
+  /* растяжки сверху/снизу: короткий контент центрируется, длинный — скроллится */
+  body.mobile .overlay:not(#battle)::before,
+  body.mobile .overlay:not(#battle)::after { content: ''; flex: 1 0 0; }
+  body.mobile .overlay > div[style*="display:flex"] { flex-wrap: wrap; justify-content: center; }
+  body.mobile h1 { font-size: 20px; }
+  body.mobile button { min-height: 44px; font-size: 15px; }
+  body.mobile .prow, body.mobile .srow, body.mobile .arow { width: 100%; }
+  body.mobile .prow { flex-wrap: wrap; }
+  body.mobile .prow .info .bar { width: 100%; }
+  body.mobile .prow button { min-height: 36px; font-size: 13px; }
+  body.mobile #dex-grid { max-height: none; }
+  body.mobile .dcard { width: calc(50% - 5px); }
+  body.mobile #map-canvas { max-width: 100%; height: auto; }
+  body.mobile #export-code, body.mobile #friend-code-in { width: 100% !important; }
+  body.mobile input[type=text] { width: min(320px, 88vw); font-size: 16px; }
+  body.mobile textarea { font-size: 16px !important; }
+  body.mobile .starter { width: min(44vw, 170px); padding: 8px; }
+  body.mobile .starter canvas { width: min(30vw, 128px); height: auto; }
+  /* бой на мобильном */
+  body.mobile #battle { padding: 10px; gap: 8px; }
+  body.mobile #bt-scene { max-width: none; }
+  body.mobile #bt-ecanvas { width: min(31vw, 132px); height: auto; }
+  body.mobile #bt-pcanvas { width: min(42vw, 190px); height: auto; }
+  body.mobile #bt-tcanvas { width: min(17vw, 72px); height: auto; }
+  body.mobile .bt-card { min-width: 0; flex: 1; max-width: 300px; font-size: 13px; padding: 6px 10px; }
+  body.mobile #bt-log { font-size: 15px; min-height: 64px; }
+  body.mobile #bt-menu { grid-template-columns: repeat(2, 1fr); max-width: none; }
+  body.mobile #bt-menu button { min-height: 52px; padding: 6px 8px; font-size: 14px; }
   .stat-tag {
     display: inline-block; font-size: 10px; padding: 0 4px; border-radius: 3px;
     background: #803a8f; color: #fff; margin-left: 4px; vertical-align: middle;
@@ -245,13 +327,18 @@
   <!-- Бой -->
   <div id="battle" class="overlay hidden">
     <div id="bt-scene">
-      <div class="bt-side">
-        <canvas id="bt-pcanvas" width="32" height="32"></canvas>
-        <div class="bt-card" id="bt-pcard"></div>
-      </div>
-      <div class="bt-side">
+      <div class="bt-row enemy">
         <div class="bt-card" id="bt-ecard"></div>
-        <canvas id="bt-ecanvas" width="32" height="32"></canvas>
+        <div class="bt-stand">
+          <canvas id="bt-tcanvas" width="16" height="16" class="hidden"></canvas>
+          <canvas id="bt-ecanvas" width="32" height="32"></canvas>
+        </div>
+      </div>
+      <div class="bt-row player">
+        <div class="bt-stand">
+          <canvas id="bt-pcanvas" width="32" height="32"></canvas>
+        </div>
+        <div class="bt-card" id="bt-pcard"></div>
       </div>
     </div>
     <div id="bt-log"></div>

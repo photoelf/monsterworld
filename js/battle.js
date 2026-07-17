@@ -74,9 +74,9 @@ const Battle = {
 
   // ---------- отрисовка карточек ----------
 
-  drawSprite(canvasId, mon, flip) {
+  drawSprite(canvasId, mon, flip, back) {
     const cv = this.el(canvasId);
-    const sp = speciesSprite(mon.speciesSeed, mon.stage, mon.shiny);
+    const sp = speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back);
     cv.width = 32; cv.height = 32;
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingEnabled = false;
@@ -104,8 +104,23 @@ const Battle = {
   refresh(pm, em) {
     this.card('bt-pcard', pm);
     this.card('bt-ecard', em);
-    this.drawSprite('bt-pcanvas', pm, true);
+    this.drawSprite('bt-pcanvas', pm, false, true);  // свой — со спины
     this.drawSprite('bt-ecanvas', em, false);
+  },
+
+  // Фигура соперника на сцене: тренер, лидер арены или никого (дикие/PvP)
+  setupScene(foe) {
+    const cv = this.el('bt-tcanvas');
+    const sheet = foe === 'master' ? (typeof masterSprite !== 'undefined' && masterSprite)
+               : foe === 'trainer' ? (typeof trainerSprite !== 'undefined' && trainerSprite)
+               : null;
+    if (!sheet) { cv.classList.add('hidden'); return; }
+    cv.width = 16; cv.height = 16;
+    const ctx = cv.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+    ctx.clearRect(0, 0, 16, 16);
+    ctx.drawImage(sheet, 0, 0, 16, 16, 0, 0, 16, 16); // стоит лицом к игроку
+    cv.classList.remove('hidden');
   },
 
   hitFx(side) {
@@ -257,12 +272,13 @@ const Battle = {
   },
 
   // ---------- главный цикл боя ----------
-  // opts: { kind:'wild'|'trainer', enemyParty:[...], trainerName? }
+  // opts: { kind:'wild'|'trainer', foe:'wild'|'trainer'|'master', enemyParty:[...], trainerName? }
   // Возвращает: 'win' | 'lose' | 'run' | 'caught'
 
   async run(opts) {
     this.active = true;
     this.el('battle').classList.remove('hidden');
+    this.setupScene(opts.foe || (opts.kind === 'trainer' ? 'trainer' : 'wild'));
     const party = G.party;
     let pi = this.firstAlive(party);
     let ei = 0;
