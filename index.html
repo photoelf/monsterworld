@@ -133,6 +133,17 @@
     background: radial-gradient(ellipse at center, rgba(110,150,110,.5), rgba(0,0,0,0) 72%);
   }
   .bt-stand canvas { position: relative; z-index: 1; image-rendering: pixelated; }
+  /* стойка: лёгкое «дыхание» вверх-вниз; тень (::after) остаётся на земле */
+  #bt-pcanvas, #bt-ecanvas { animation: idlebob 1.3s ease-in-out infinite; }
+  #bt-ecanvas { animation-delay: .4s; }
+  @keyframes idlebob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
+  /* выпад к противнику при атаке */
+  .bt-stand canvas.lunge-r { animation: lungeR .34s ease-out; }
+  .bt-stand canvas.lunge-l { animation: lungeL .34s ease-out; }
+  @keyframes lungeR { 0%, 100% { transform: translate(0, 0); } 42% { transform: translate(30px, -12px); } }
+  @keyframes lungeL { 0%, 100% { transform: translate(0, 0); } 42% { transform: translate(-30px, 12px); } }
+  /* тряска/вспышка при получении удара — поверх дыхания */
+  .bt-stand canvas.shake { animation: shake .3s, flash .3s; }
   #bt-ecanvas { width: 128px; height: 128px; }
   #bt-pcanvas { width: 184px; height: 184px; }
   #bt-tcanvas { width: 72px; height: 72px; opacity: .95; }

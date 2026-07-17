@@ -147,6 +147,18 @@ const Battle = {
     void cv.offsetWidth;
     cv.classList.add('shake');
     cv.classList.add('flash');
+    // снять классы, чтобы вернулось «дыхание» стойки
+    setTimeout(() => cv.classList.remove('shake', 'flash'), 400);
+  },
+
+  // Выпад атакующего к противнику (свой — вправо-вверх, вражеский — влево-вниз)
+  lungeFx(side) {
+    const cv = this.el(side === 'enemy' ? 'bt-ecanvas' : 'bt-pcanvas');
+    const cls = side === 'enemy' ? 'lunge-l' : 'lunge-r';
+    cv.classList.remove(cls);
+    void cv.offsetWidth;
+    cv.classList.add(cls);
+    setTimeout(() => cv.classList.remove(cls), 400);
   },
 
   // ---------- механика ----------
@@ -230,11 +242,15 @@ const Battle = {
     }
     if (Math.random() * 100 > move.acc) {
       sfx('miss');
+      this.lungeFx(attSide);   // выпад в пустоту
       await this.say('Но промахивается!');
       return;
     }
     const r = this.calcDamage(att, def, move, attSide === 'player');
     def.hp = Math.max(0, def.hp - r.dmg);
+    this.lungeFx(attSide);
+    // удар прилетает в пике выпада
+    await new Promise(res => setTimeout(res, 150));
     sfx('hit');
     this.hitFx(attSide === 'player' ? 'enemy' : 'player');
     this.refresh(this._pm, this._em);

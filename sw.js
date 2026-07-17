@@ -2,7 +2,7 @@
 
 // Офлайн-кэш: stale-while-revalidate — отвечаем из кэша мгновенно,
 // в фоне обновляем; новая версия подхватится при следующей загрузке.
-const CACHE = 'monsterworld-v14';
+const CACHE = 'monsterworld-v15';
 const ASSETS = [
   './', './index.html',
   './js/tg.js', './js/net.js', './js/util.js', './js/data.js', './js/world.js', './js/battle.js', './js/main.js', './js/pvp.js',
