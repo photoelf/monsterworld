@@ -308,9 +308,9 @@ const Battle = {
       await this.say(opts.trainerName + ' отправляет в бой ' + monName(enemyParty[ei]) + '!');
     } else if (enemyParty[ei].shiny) {
       sfx('catch');
-      await this.say('✨ СИЯЮЩИЙ дикий ' + monName(enemyParty[ei]) + ' (Ур.' + enemyParty[ei].level + ') появляется! Невероятная редкость!');
+      await this.say('✨ СИЯЮЩИЙ ' + stageWord(enemyParty[ei].stage) + ' ' + monName(enemyParty[ei]) + ' (Ур.' + enemyParty[ei].level + ') появляется! Невероятная редкость!');
     } else {
-      await this.say('Дикий ' + monName(enemyParty[ei]) + ' (Ур.' + enemyParty[ei].level + ') появляется!');
+      await this.say('Дикий ' + stageWord(enemyParty[ei].stage) + ' ' + monName(enemyParty[ei]) + ' (Ур.' + enemyParty[ei].level + ') появляется!');
     }
 
     battleLoop:
@@ -370,12 +370,12 @@ const Battle = {
           } else {
             this.note('Команда полна! Куда отправить ' + monName(em) + '?');
             const choice = await this.menu([
-              { label: '📦 В Монстрохранилище', small: 'хранится: ' + G.storage.length },
+              { label: '📦 В общак', small: 'хранится: ' + G.storage.length },
               { label: 'Взять в команду', small: 'заменяемый уйдёт в хранилище' },
             ]);
             if (choice === 0) {
               G.storage.push(em);
-              await this.say(monName(em) + ' отправлен в Монстрохранилище (B).');
+              await this.say(monName(em) + ' отправлен в общак (B).');
             } else {
               this.note('Кто уступит место? (Назад — нового в хранилище)');
               const ri = await this.menu(party.map(m => ({
@@ -388,7 +388,7 @@ const Battle = {
                 party[ri] = em;
               } else {
                 G.storage.push(em);
-                await this.say(monName(em) + ' отправлен в Монстрохранилище (B).');
+                await this.say(monName(em) + ' отправлен в общак (B).');
               }
             }
           }
@@ -530,7 +530,7 @@ const Battle = {
         await this.say('Победа над ' + opts.trainerName + '! Награда: ' + reward + '₴ и 2 сферы.');
         if (opts.badgeId) {
           sfx('catch');
-          await this.say('Ты получаешь ЗНАЧОК АРЕНЫ! Твои монстрики бьют на 3% сильнее за каждый значок.');
+          await this.say('Ты получаешь ЗНАЧОК АРЕНЫ! Твоя братва бьёт на 3% сильнее за каждый значок.');
         }
       } else {
         questProgress('wild');
@@ -548,7 +548,7 @@ const Battle = {
         }
       }
     } else if (result === 'lose') {
-      await this.say('Все твои монстрики без сил! Ты бежишь к точке старта...');
+      await this.say('Вся твоя братва без сил! Ты бежишь к точке старта...');
     }
 
     this.active = false;

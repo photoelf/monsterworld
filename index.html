@@ -6,7 +6,7 @@
 <meta name="theme-color" content="#1a1a24">
 <link rel="manifest" href="manifest.webmanifest">
 <link rel="apple-touch-icon" href="icons/icon-192.png">
-<title>Мир Монстриков</title>
+<title>Карманная Братва</title>
 <!-- Telegram Mini App SDK: defer, чтобы офлайн-PWA не блокировался без сети -->
 <script src="https://telegram.org/js/telegram-web-app.js" defer></script>
 <style>
@@ -182,7 +182,7 @@
   }
   .srow .info { flex: 1; }
   .srow .nm { color: var(--ui-accent); font-weight: bold; }
-  /* ---------- Монстропедия ---------- */
+  /* ---------- Братопедия ---------- */
   #dex-grid {
     display: flex; flex-wrap: wrap; gap: 10px; justify-content: center;
     max-width: 760px; max-height: 380px; overflow-y: auto; padding: 6px;
@@ -351,14 +351,14 @@
     <div class="hud-box" id="hud-party"></div>
   </div>
   <div id="toast"></div>
-  <div id="hint">WASD · Shift — бег · Tab — команда · B — хранилище · M — карта · P — педия · O — награды · T — обмен/PvP</div>
+  <div id="hint">WASD · Shift — бег · Tab — команда · B — общак · M — карта · P — педия · O — награды · T — обмен/PvP</div>
 
   <!-- Титульный экран -->
   <div id="title" class="overlay">
-    <h1>МИР МОНСТРИКОВ</h1>
+    <h1>КАРМАННАЯ БРАТВА</h1>
     <div id="title-nick" style="opacity:.85;color:var(--ui-accent);"></div>
-    <p>Бесконечный процедурный мир: поля, леса, парки и города. Лови странных монстриков
-       со случайными умениями, прокачивай, эволюционируй и сражайся с другими тренерами.</p>
+    <p>Бесконечный процедурный мир: поля, леса, парки и города. Собирай карманную братву:
+       лови братишек, прокачивай их в братьев и братанов и сражайся с другими тренерами.</p>
     <input type="text" id="seed-input" placeholder="сид мира (пусто = случайный)">
     <div style="display:flex; gap:12px;">
       <button id="btn-new">Новый мир</button>
@@ -381,7 +381,7 @@
 
   <!-- Выбор стартера -->
   <div id="starter-pick" class="overlay hidden">
-    <h1 style="font-size:24px;">Выбери первого монстрика</h1>
+    <h1 style="font-size:24px;">Выбери первого братишку</h1>
     <canvas id="starter-map" style="border:2px solid var(--ui-border);border-radius:4px;image-rendering:pixelated;max-width:92%;max-height:34vh;"></canvas>
     <div id="starter-climate" style="font-size:13px;opacity:.85;"></div>
     <div id="starters"></div>
@@ -416,9 +416,9 @@
     <button id="btn-shop-close">Закрыть (Esc)</button>
   </div>
 
-  <!-- Монстропедия -->
+  <!-- Братопедия -->
   <div id="dex-panel" class="overlay hidden">
-    <h1 style="font-size:22px;">Монстропедия</h1>
+    <h1 style="font-size:22px;">Братопедия</h1>
     <div id="dex-count" style="opacity:.85;"></div>
     <div id="dex-grid"></div>
     <button id="btn-dex-close">Закрыть (P)</button>
@@ -512,21 +512,21 @@
     <h1 style="font-size:22px;">Команда</h1>
     <div id="party-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px;"></div>
     <div style="display:flex;gap:10px;">
-      <button id="btn-storage-open">📦 Монстрохранилище</button>
+      <button id="btn-storage-open">📦 Общак</button>
       <button id="btn-party-close">Закрыть (Tab)</button>
     </div>
   </div>
 
-  <!-- Монстрик подробно -->
+  <!-- Братишка подробно -->
   <div id="mon-panel" class="overlay hidden">
     <h1 style="font-size:20px;" id="mon-title"></h1>
     <div id="mon-body" style="display:flex;flex-direction:column;gap:10px;width:min(560px,94vw);"></div>
     <button id="btn-mon-close">‹ Назад к команде</button>
   </div>
 
-  <!-- Монстрохранилище -->
+  <!-- Общак -->
   <div id="storage-panel" class="overlay hidden">
-    <h1 style="font-size:20px;">📦 Монстрохранилище</h1>
+    <h1 style="font-size:20px;">📦 Общак</h1>
     <div id="storage-info" style="opacity:.85;"></div>
     <div id="storage-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px;"></div>
     <button id="btn-storage-close">Закрыть (B)</button>

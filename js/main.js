@@ -57,29 +57,29 @@ function resetFollower() {
 // ===== Достижения =====
 
 const ACHIEVEMENTS = [
-  { id: 'catch1',   ic: '🐾', name: 'Первый друг',      desc: 'Поймай монстрика',                   test: () => G.dex.caught.size >= 1 },
+  { id: 'catch1',   ic: '🐾', name: 'Первый друг',      desc: 'Поймай первого братишку',                   test: () => G.dex.caught.size >= 1 },
   { id: 'catch10',  ic: '📗', name: 'Коллекционер',     desc: 'Поймай 10 видов',                    test: () => G.dex.caught.size >= 10 },
   { id: 'catch25',  ic: '📚', name: 'Архивариус',       desc: 'Поймай 25 видов',                    test: () => G.dex.caught.size >= 25 },
-  { id: 'shiny1',   ic: '✨', name: 'Золотая лихорадка', desc: 'Поймай сияющего монстрика',          test: () => G.dex.shiny.size >= 1 },
-  { id: 'evolve1',  ic: '🦋', name: 'Метаморфоза',      desc: 'Эволюционируй монстрика',            test: () => G.stats.evolutions >= 1 },
+  { id: 'shiny1',   ic: '✨', name: 'Золотая лихорадка', desc: 'Поймай сияющего братишку',          test: () => G.dex.shiny.size >= 1 },
+  { id: 'evolve1',  ic: '🦋', name: 'Метаморфоза',      desc: 'Прокачай братишку в брата',            test: () => G.stats.evolutions >= 1 },
   { id: 'party6',   ic: '👥', name: 'Полный состав',    desc: 'Собери команду из 6',                test: () => G.party.length >= 6 },
   { id: 'badge1',   ic: '🏅', name: 'Претендент',       desc: 'Выиграй значок арены',               test: () => G.badges.length >= 1 },
   { id: 'badge3',   ic: '👑', name: 'Чемпион',          desc: 'Собери 3 значка арены',              test: () => G.badges.length >= 3 },
   { id: 'train10',  ic: '⚔️', name: 'Гроза тренеров',   desc: 'Победи 10 тренеров',                 test: () => G.stats.trainersBeaten >= 10 },
   { id: 'rich',     ic: '💰', name: 'Богач',            desc: 'Накопи 5000₴',                        test: () => G.money >= 5000 },
   { id: 'far',      ic: '🧭', name: 'Первопроходец',    desc: 'Уйди на 300 тайлов от старта',        test: () => G.stats.maxDist >= 300 },
-  { id: 'nest1',    ic: '🥚', name: 'Разоритель гнёзд', desc: 'Найди гнездо редкого монстра',        test: () => G.stats.nests >= 1 },
-  { id: 'trade1',   ic: '🔄', name: 'Сделка века',      desc: 'Обменяйся монстриками с NPC',         test: () => G.stats.trades >= 1 },
-  { id: 'surf1',    ic: '🌊', name: 'Мореплаватель',    desc: 'Проплыви по воде на монстрике',       test: () => G.stats.surfed >= 1 },
-  { id: 'fish1',    ic: '🎣', name: 'Рыбак',            desc: 'Выуди монстрика удочкой',             test: () => G.stats.fished >= 1 },
+  { id: 'nest1',    ic: '🥚', name: 'Разоритель гнёзд', desc: 'Найди гнездо редкого братишки',        test: () => G.stats.nests >= 1 },
+  { id: 'trade1',   ic: '🔄', name: 'Сделка века',      desc: 'Обменяйся братишками с NPC',         test: () => G.stats.trades >= 1 },
+  { id: 'surf1',    ic: '🌊', name: 'Мореплаватель',    desc: 'Проплыви по воде на братишке',       test: () => G.stats.surfed >= 1 },
+  { id: 'fish1',    ic: '🎣', name: 'Рыбак',            desc: 'Выуди братишку удочкой',             test: () => G.stats.fished >= 1 },
   { id: 'tower5',   ic: '🗼', name: 'Покоритель башни', desc: 'Пройди 5 этажей башни испытаний',     test: () => G.stats.towerBest >= 5 },
-  { id: 'legend1',  ic: '⚡', name: 'Легенда',          desc: 'Поймай легендарного монстра',         test: () => G.stats.legends >= 1 },
-  { id: 'teach1',   ic: '📜', name: 'Наставник',        desc: 'Научи монстрика умению со свитка',    test: () => G.stats.taught >= 1 },
-  { id: 'egg1',     ic: '🐣', name: 'Родитель',         desc: 'Выведи монстрика из яйца',            test: () => G.stats.eggsHatched >= 1 },
+  { id: 'legend1',  ic: '⚡', name: 'Легенда',          desc: 'Поймай легендарного братана',         test: () => G.stats.legends >= 1 },
+  { id: 'teach1',   ic: '📜', name: 'Наставник',        desc: 'Научи братишку умению со свитка',    test: () => G.stats.taught >= 1 },
+  { id: 'egg1',     ic: '🐣', name: 'Родитель',         desc: 'Выведи братишку из яйца',            test: () => G.stats.eggsHatched >= 1 },
   { id: 'quest3',   ic: '📋', name: 'Подрядчик',        desc: 'Выполни 3 задания с доски',           test: () => G.stats.quests >= 3 },
-  { id: 'charm1',   ic: '🧿', name: 'Талисман',         desc: 'Надень амулет на монстрика',          test: () => G.party.some(m => m.charm) },
+  { id: 'charm1',   ic: '🧿', name: 'Талисман',         desc: 'Надень амулет на братишку',          test: () => G.party.some(m => m.charm) },
   { id: 'climate',  ic: '🌍', name: 'Климатолог',       desc: 'Побывай в снегах и в пустыне',        test: () => G.stats.sawSnow >= 1 && G.stats.sawDesert >= 1 },
-  { id: 'ptrade1',  ic: '🤝', name: 'Настоящий друг',   desc: 'Обменяйся монстриком с другим игроком', test: () => G.stats.friendTrades >= 1 },
+  { id: 'ptrade1',  ic: '🤝', name: 'Настоящий друг',   desc: 'Обменяйся братишкой с другим игроком', test: () => G.stats.friendTrades >= 1 },
   { id: 'pvp1',     ic: '⚔️', name: 'Дуэлянт',          desc: 'Сыграй PvP-бой с другом',              test: () => G.stats.pvpBattles >= 1 },
   { id: 'pvpwin',   ic: '🥇', name: 'Гладиатор',        desc: 'Выиграй PvP-бой',                      test: () => G.stats.pvpWins >= 1 },
 ];
@@ -114,7 +114,7 @@ function checkAchievements() {
   }
 }
 
-// ===== Монстропедия =====
+// ===== Братопедия =====
 
 function dexSee(m) { G.dex.seen.add(m.speciesSeed); }
 function dexCaught(m) {
@@ -523,7 +523,7 @@ async function startWildBattle(x, y, mode) {
   let wild, envText = null;
   if (mode === 'nest') {
     wild = World.makeNestMonster(x, y, rng);
-    envText = '🥚 Из гнезда выбирается редкий монстр!';
+    envText = '🥚 Из гнезда вылезает редкий братишка!';
   } else if (mode === 'shrine') {
     wild = World.makeLegendMonster(x, y, rng);
     envText = '⚡ Древнее святилище пробуждается! Легендарный страж атакует!';
@@ -537,7 +537,7 @@ async function startWildBattle(x, y, mode) {
   const result = await Battle.run({ kind: 'wild', enemyParty: [wild], envText });
   if (mode === 'shrine' && result === 'caught') {
     G.stats.legends++;
-    toast('⚡ Легендарный монстр пойман!');
+    toast('⚡ Легендарный братан пойман!');
   }
   afterBattle(result);
 }
@@ -592,7 +592,7 @@ function afterBattle(result) {
       m.moves.forEach(mv => { mv.pp = mv.maxPp; });
     }
     G.lastTileKey = '';
-    toast(f ? 'Ты приходишь в себя у знакомого фонтана.' : 'Монстрики отдохнули у точки старта.');
+    toast(f ? 'Ты приходишь в себя у знакомого фонтана.' : 'Братва отдохнула у точки старта.');
   }
   G.graceSteps = 3;
   G.bumpCooldown = 0.8;
@@ -638,11 +638,11 @@ function onTileEnter(tx, ty) {
   const tile0 = World.tileAt(tx, ty);
   if ((tile0 === T.SNOW || tile0 === T.SNOWTALL) && !G.stats.sawSnow) {
     G.stats.sawSnow = 1;
-    toast('❄ Ты забрёл в снежные земли — тут водятся ледяные монстрики!');
+    toast('❄ Ты забрёл в снежные земли — тут водится ледяная братва!');
   }
   if ((tile0 === T.DESERT || tile0 === T.DESERTTALL) && !G.stats.sawDesert) {
     G.stats.sawDesert = 1;
-    toast('🏜 Пустыня! Здесь кишат огненные и электрические монстрики.');
+    toast('🏜 Пустыня! Здесь кишит огненная и электрическая братва.');
   }
   // яйцо зреет от шагов
   if (G.egg) {
@@ -665,7 +665,7 @@ function onTileEnter(tx, ty) {
   // сёрфинг: первый заплыв
   if (World.tileAt(tx, ty) === T.WATER && !G.stats.surfed) {
     G.stats.surfed = 1;
-    toast('🌊 Ты плывёшь на монстрике! На воде водится своя живность.');
+    toast('🌊 Ты плывёшь на братишке! На воде водится своя живность.');
   }
   // легендарное святилище
   if (World.shrineAt(tx, ty) && !G.usedShrines.has(ik) && G.party.some(m => m.hp > 0)) {
@@ -781,9 +781,9 @@ function tradeReceive(received) {
 
 function tradeMakeOffer(src, idx) {
   if (G.tradeOut) return { err: 'У тебя уже есть активное предложение — отмени его или заверши обмен.' };
-  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя предложить последнего монстрика из команды.' };
+  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя предложить последнего братишку из команды.' };
   const arr = src === 'store' ? G.storage : G.party;
-  if (!arr[idx]) return { err: 'Нет такого монстрика.' };
+  if (!arr[idx]) return { err: 'Нет такого братишки.' };
   const m = tradeEscrow(src, idx);
   const offerId = (hash2u((Math.random() * 1e9) | 0, (Math.random() * 1e9) | 0, Date.now() & 0xffffffff) >>> 0).toString(16);
   const dump = tradeMonDump(m);
@@ -796,9 +796,9 @@ function tradeAcceptOffer(payload, src, giveIdx) {
   if (G.tradeIn) return { err: 'Ты уже отвечаешь на другое предложение — сначала заверши или отмени его.' };
   if (G.usedTrades.has(payload.offerId)) return { err: 'Эта сделка уже была завершена.' };
   if (G.tradeOut && G.tradeOut.offerId === payload.offerId) return { err: 'Это твоё же предложение!' };
-  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя отдать последнего монстрика из команды.' };
+  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя отдать последнего братишку из команды.' };
   const arr = src === 'store' ? G.storage : G.party;
-  if (!arr[giveIdx]) return { err: 'Нет такого монстрика.' };
+  if (!arr[giveIdx]) return { err: 'Нет такого братишки.' };
   const m = tradeEscrow(src, giveIdx);
   const dump = tradeMonDump(m);
   G.tradeIn = {
@@ -827,7 +827,7 @@ function tradeCompleteOffer(payload) {
 
 function tradeFinalize(payload) {
   if (!G.tradeIn || G.tradeIn.offerId !== payload.offerId) return { err: 'Этот финальный код не подходит к твоему текущему обмену.' };
-  if (tradeMonHash(payload.mon) !== G.tradeIn.expectHash) return { err: 'Обман! В коде не тот монстрик, что был обещан в предложении.' };
+  if (tradeMonHash(payload.mon) !== G.tradeIn.expectHash) return { err: 'Обман! В коде не тот братишка, что был обещан в предложении.' };
   const received = tradeMonRevive(payload.mon);
   const dest = tradeReceive(received);
   dexCaught(received);
@@ -904,7 +904,7 @@ function renderFriendPanel() {
   document.getElementById('friend-code-in').value = '';
 
   if (!G.tradeOut && !G.tradeIn) {
-    status.innerHTML = '<span style="opacity:.75;font-size:13px;max-width:600px;">Обменивайся монстриками с другом на другой машине: создай предложение и отправь код,<br>или вставь код друга ниже. Сделка идёт в 3 шага — никто не рискует остаться ни с чем.</span>';
+    status.innerHTML = '<span style="opacity:.75;font-size:13px;max-width:600px;">Обменивайся братишками с другом на другой машине: создай предложение и отправь код,<br>или вставь код друга ниже. Сделка идёт в 3 шага — никто не рискует остаться ни с чем.</span>';
   }
   if (G.tradeOut) {
     const wrap = document.createElement('div');
@@ -913,7 +913,7 @@ function renderFriendPanel() {
     const cancel = document.createElement('button');
     cancel.textContent = 'Отменить';
     cancel.onclick = () => {
-      if (!confirm('Отменить предложение и вернуть монстрика? Делай это только если друг ещё НЕ ответил на него.')) return;
+      if (!confirm('Отменить предложение и вернуть братишку? Делай это только если друг ещё НЕ ответил на него.')) return;
       tradeReceive(tradeMonRevive(G.tradeOut.mon));
       G.tradeOut = null;
       renderFriendPanel();
@@ -1030,7 +1030,7 @@ function friendProcessCode() {
       sfx('catch');
       toast('🤝 Обмен! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в хранилище (B).' : ' теперь с тобой.'));
       renderFriendPanel();
-      friendShowCode('Финальный код — ОБЯЗАТЕЛЬНО отправь другу, иначе он не получит монстрика:', r.code);
+      friendShowCode('Финальный код — ОБЯЗАТЕЛЬНО отправь другу, иначе он не получит братишку:', r.code);
     };
     main.appendChild(btn);
     return;
@@ -1049,7 +1049,7 @@ function friendProcessCode() {
   main.appendChild(friendMonRow(tradeMonDump(r.received)));
 }
 
-// ===== Монстрохранилище =====
+// ===== Общак =====
 
 function toggleStorage() {
   const panel = document.getElementById('storage-panel');
@@ -1077,7 +1077,7 @@ function storageWithdraw(i) {
 }
 
 function storageDeposit(partyIdx) {
-  if (G.party.length < 2) { toast('Нельзя убрать последнего монстрика!'); return false; }
+  if (G.party.length < 2) { toast('Нельзя убрать последнего братишку!'); return false; }
   const m = G.party.splice(partyIdx, 1)[0];
   if (m) {
     if (m.charm) { G.charms[m.charm]++; m.charm = null; recalcStats(m); }
@@ -1156,7 +1156,7 @@ function hatchEgg() {
 function openNursery() {
   if (G.state !== 'world') return;
   if (G.egg) { toast('🥚 Питомник: «Сначала выноси текущее яйцо! Осталось шагов: ' + G.egg.steps + '»'); return; }
-  if (G.party.length + G.storage.length < 2) { toast('🥚 Питомник: «Приходи с двумя монстриками!»'); return; }
+  if (G.party.length + G.storage.length < 2) { toast('🥚 Питомник: «Приходи с двумя братишками!»'); return; }
   G.state = 'nursery';
   renderNursery([]);
   document.getElementById('nursery-panel').classList.remove('hidden');
@@ -1226,7 +1226,7 @@ function makeBoardOffer(boardId) {
   if (kind === 'catch') {
     q.param = pick(rng, TYPE_LIST);
     q.need = 1;
-    q.text = 'Поймай монстрика типа «' + TYPE_INFO[q.param].ru + '»';
+    q.text = 'Поймай братишку типа «' + TYPE_INFO[q.param].ru + '»';
   } else if (kind === 'trainer') {
     q.need = irange(rng, 2, 3);
     q.text = 'Победи ' + q.need + ' тренеров';
@@ -1313,7 +1313,7 @@ function step(dt) {
   const newPhase = calcPhase();
   const newWeather = World.weatherAt(Math.floor(G.player.x), Math.floor(G.player.y), G.clock);
   if (newPhase !== G.phase || newWeather !== G.weather) {
-    if (newWeather === 'rain' && G.weather !== 'rain') toast('☔ Начинается дождь — водные монстрики оживились!');
+    if (newWeather === 'rain' && G.weather !== 'rain') toast('☔ Начинается дождь — водная братва оживилась!');
     if (newPhase === 'night' && G.phase !== 'night') toast('🌙 Наступает ночь — в траве шуршат тёмные твари...');
     G.phase = newPhase;
     G.weather = newWeather;
@@ -1393,7 +1393,7 @@ function step(dt) {
         openBoard(hit.tx, hit.ty);
       } else if (bumpTile === T.WATER && !canSurf()) {
         G.bumpCooldown = 2.5;
-        toast('🌊 Нужен водный монстрик 15+ уровня, чтобы плыть.');
+        toast('🌊 Нужен водный братишка 15+ уровня, чтобы плыть.');
       }
     }
 
@@ -1794,15 +1794,15 @@ function openTrade(td) {
   offerEl.appendChild(oInfo);
 
   document.getElementById('trade-wants').innerHTML =
-    'Хочет взамен монстрика типа <b style="color:' + wt.color + '">' + wt.ru + '</b>:';
+    'Хочет взамен братишку типа <b style="color:' + wt.color + '">' + wt.ru + '</b>:';
 
   const rows = document.getElementById('trade-rows');
   rows.innerHTML = '';
   const candidates = G.party.filter(m => monType(m) === wantsType);
   if (G.party.length < 2) {
-    rows.innerHTML = '<span style="opacity:.7">Нельзя отдать последнего монстрика.</span>';
+    rows.innerHTML = '<span style="opacity:.7">Нельзя отдать последнего братишку.</span>';
   } else if (!candidates.length) {
-    rows.innerHTML = '<span style="opacity:.7">У тебя нет монстрика типа «' + wt.ru + '».</span>';
+    rows.innerHTML = '<span style="opacity:.7">У тебя нет братишки типа «' + wt.ru + '».</span>';
   } else {
     for (const m of candidates) {
       const row = document.createElement('div');
@@ -1953,7 +1953,7 @@ function closeExport() {
   G.state = 'world';
 }
 
-// ===== Монстропедия (панель) =====
+// ===== Братопедия (панель) =====
 
 function silhouette(spr) {
   const cv = document.createElement('canvas');
@@ -2056,7 +2056,7 @@ function renderPartyRows() {
   });
 }
 
-// ===== Модалка одного монстрика =====
+// ===== Модалка одного братишки =====
 
 function closeMonDetail() {
   document.getElementById('mon-panel').classList.add('hidden');
@@ -2090,7 +2090,7 @@ function openMonDetail(i) {
   const info = document.createElement('div');
   info.style.cssText = 'text-align:left;font-size:13px;flex:1;min-width:0;line-height:1.6;';
   info.innerHTML =
-    '<div>Ур.' + m.level + statusTag(m) + ' · <span style="color:' + t.color + '">' + t.ru + '</span> · ' +
+    '<div>' + stageWord(m.stage) + ' · Ур.' + m.level + statusTag(m) + ' · <span style="color:' + t.color + '">' + t.ru + '</span> · ' +
     (st.evolveLevel ? 'эво на ' + st.evolveLevel : 'финальная форма') + '</div>' +
     '<div class="bar" style="height:8px;margin:4px 0"><i class="' + (pct < 30 ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
     '<div style="opacity:.85">' + m.hp + '/' + m.maxHp + ' ОЗ · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd + '</div>' +

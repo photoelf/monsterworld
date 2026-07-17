@@ -28,7 +28,7 @@ const WILD_TILES = new Set([T.GRASS, T.TALL, T.FLOOR, T.SNOW, T.SNOWTALL, T.DESE
 const CITY_CELL = 96;
 
 const CITY_PRE = ['Ново', 'Старо', 'Верхне', 'Нижне', 'Бело', 'Черно', 'Красно',
-  'Зелено', 'Тихо', 'Громо', 'Звездо', 'Мохо', 'Ясно', 'Дально', 'Крипто', 'Монстро'];
+  'Зелено', 'Тихо', 'Громо', 'Звездо', 'Мохо', 'Ясно', 'Дально', 'Крипто', 'Братво'];
 const CITY_ROOT = ['горск', 'реченск', 'полье', 'лесск', 'озёрск', 'камск', 'травинск',
   'цветовск', 'холмск', 'бережск', 'градск', 'варинск', 'мшинск', 'клыковск'];
 
@@ -451,11 +451,15 @@ const World = {
     const u = hash2u(bx, by, this.seed ^ 0xAAAA);
     const lvl = clamp(this.levelAt(x, y) + 4, 6, 60);
     const city = this.nearestCityCenter(x, y);
+    // половина городов — под супертренерами легендарной четвёрки
+    const name = (u & 1)
+      ? 'Супертренер ' + SUPER_TRAINERS[(u >>> 1) % SUPER_TRAINERS.length] + ' — лидер города ' + city.name
+      : 'Лидер города ' + city.name + ' — ' + TRAINER_NAMES[u % TRAINER_NAMES.length];
     return {
       x, y,
       id: 'A' + bx + ',' + by,
       seed: u,
-      name: 'Лидер города ' + city.name + ' — ' + TRAINER_NAMES[u % TRAINER_NAMES.length],
+      name,
       level: lvl,
       isMaster: true,
     };
