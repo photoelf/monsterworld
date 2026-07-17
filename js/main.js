@@ -1638,12 +1638,20 @@ function toggleMap() {
 
 function renderMap() {
   const cv = document.getElementById('map-canvas');
+  // на мобильном в портрете карта тоже портретная — под пропорции экрана
+  let tw = MAP_TILES_W, th = MAP_TILES_H;
+  if (IS_MOBILE && window.innerHeight > window.innerWidth) {
+    tw = 150;
+    th = Math.min(300, Math.round(tw * (window.innerHeight * 0.55) / Math.max(200, window.innerWidth - 24)));
+  }
+  cv.width = tw * MAP_PX;
+  cv.height = th * MAP_PX;
   const c = cv.getContext('2d');
   const px = Math.floor(G.player.x), py = Math.floor(G.player.y);
-  const x0 = px - MAP_TILES_W / 2, y0 = py - MAP_TILES_H / 2;
+  const x0 = px - tw / 2, y0 = py - th / 2;
 
-  for (let ty = 0; ty < MAP_TILES_H; ty++) {
-    for (let tx = 0; tx < MAP_TILES_W; tx++) {
+  for (let ty = 0; ty < th; ty++) {
+    for (let tx = 0; tx < tw; tx++) {
       c.fillStyle = MAP_COLORS[World.tileAt(x0 + tx, y0 + ty)] || '#000';
       c.fillRect(tx * MAP_PX, ty * MAP_PX, MAP_PX, MAP_PX);
     }
@@ -1658,7 +1666,7 @@ function renderMap() {
     c.fillRect(mx - 3, my - 3, 6, 6);
   }
   // игрок — крестик в центре
-  const cx = MAP_TILES_W / 2 * MAP_PX, cy = MAP_TILES_H / 2 * MAP_PX;
+  const cx = tw / 2 * MAP_PX, cy = th / 2 * MAP_PX;
   c.fillStyle = '#ffffff';
   c.fillRect(cx - 6, cy - 1, 12, 3); c.fillRect(cx - 1, cy - 6, 3, 12);
   c.fillStyle = '#e02020';

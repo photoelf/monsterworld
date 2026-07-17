@@ -238,19 +238,22 @@
   body.mobile #wrap { width: 100vw; max-width: none; height: 100dvh; top: 0; transform: none; margin: 0; }
   body.mobile #game { width: 100vw; height: 100dvh; border: none; border-radius: 0; }
   body.mobile #hint { display: none; }
+  /* вкладки — чётко наверху во всю ширину, статус-бар под ними, чипы команды скрыты */
+  body.mobile #touch-menu {
+    top: max(6px, env(safe-area-inset-top)); left: 8px; right: 8px;
+    transform: none; justify-content: space-evenly;
+  }
+  body.mobile #touch-menu .tbtn { flex: 1; max-width: 68px; height: 40px; }
   body.mobile #hud { display: none; }
   body.mobile[data-state="world"] #hud, body.mobile[data-state="fishing"] #hud {
-    display: flex; top: max(6px, env(safe-area-inset-top)); font-size: 11px; gap: 6px;
+    display: flex; top: calc(max(6px, env(safe-area-inset-top)) + 48px); font-size: 11px;
   }
-  body.mobile #hud-stats { font-size: 10px; max-width: 44vw; }
-  body.mobile .chip { min-width: 44px; }
-  body.mobile .chip .nm { font-size: 9px; max-width: 52px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  body.mobile .chip .lv { font-size: 9px; }
+  body.mobile #hud-party { display: none; }
+  body.mobile #hud-stats { font-size: 10px; max-width: none; flex: 1; }
   body.mobile #toast {
-    top: calc(max(6px, env(safe-area-inset-top)) + 100px);
+    top: calc(max(6px, env(safe-area-inset-top)) + 108px);
     font-size: 13px; max-width: 92vw; white-space: normal; text-align: center;
   }
-  body.mobile #touch-menu { top: calc(max(6px, env(safe-area-inset-top)) + 56px); }
   /* панели — полноэкранные страницы с крупными кнопками */
   body.mobile .overlay {
     justify-content: flex-start; overflow-y: auto; overflow-x: hidden; gap: 10px;
@@ -259,13 +262,31 @@
   /* растяжки сверху/снизу: короткий контент центрируется, длинный — скроллится */
   body.mobile .overlay:not(#battle)::before,
   body.mobile .overlay:not(#battle)::after { content: ''; flex: 1 0 0; }
-  body.mobile .overlay > div[style*="display:flex"] { flex-wrap: wrap; justify-content: center; }
+  body.mobile .overlay > div[style*="display:flex"]:not([style*="column"]) { flex-wrap: wrap; justify-content: center; }
+  /* списки: без потолка высоты и без сжатия флексом — иначе появляется внутренний скролл
+     или flex-column уезжает колонками вбок; скроллится вся страница целиком */
+  body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
+  body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
+  body.mobile #friend-main, body.mobile #dex-grid, body.mobile #trade-rows {
+    max-height: none !important; flex-shrink: 0;
+  }
   body.mobile h1 { font-size: 20px; }
   body.mobile button { min-height: 44px; font-size: 15px; }
+  /* контейнеры списков — во всю ширину, без горизонтального скролла */
+  body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
+  body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
+  body.mobile #trade-rows, body.mobile #friend-main, body.mobile #dex-grid,
+  body.mobile #board-info, body.mobile #map-travel {
+    width: 100%; max-width: 100%; overflow-x: hidden;
+  }
   body.mobile .prow, body.mobile .srow, body.mobile .arow { width: 100%; }
+  body.mobile .prow .info, body.mobile .srow .info, body.mobile .arow > span:last-child { min-width: 0; }
   body.mobile .prow { flex-wrap: wrap; }
+  /* инфо занимает первую строку рядом со спрайтом; кнопки действий переносятся вниз */
+  body.mobile .prow .info { flex: 1 1 calc(100% - 90px); }
   body.mobile .prow .info .bar { width: 100%; }
   body.mobile .prow button { min-height: 36px; font-size: 13px; }
+  body.mobile .prow .mv button { min-height: 30px; }
   body.mobile #dex-grid { max-height: none; }
   body.mobile .dcard { width: calc(50% - 5px); }
   body.mobile #map-canvas { max-width: 100%; height: auto; }
