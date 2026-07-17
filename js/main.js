@@ -2252,9 +2252,20 @@ function openMonDetail(i) {
       } else {
         const note = document.createElement('div');
         note.style.cssText = 'opacity:.8;';
-        note.textContent = 'Покупка доступна в Telegram: открой игру через @poketmons_bot.';
+        note.textContent = 'Покупка за Stars — в Telegram: @poketmons_bot. Или введи промокод:';
         buyRow.appendChild(note);
       }
+      const promoBtn = document.createElement('button');
+      promoBtn.textContent = '🎟 Промокод';
+      promoBtn.onclick = () => {
+        const code = prompt('Введи промокод:');
+        if (!code || !code.trim()) return;
+        netRedeemCode(code.trim(), ok => {
+          if (ok) { toast('🎟 Промокод принят — спрайты открыты!'); openMonDetail(i); }
+          else toast('Промокод не подошёл или уже израсходован.');
+        });
+      };
+      buyRow.appendChild(promoBtn);
       box.appendChild(buyRow);
       acts.parentNode.insertBefore(box, acts.nextSibling);
       // проверим — вдруг уже куплено на другом устройстве

@@ -60,6 +60,30 @@ function validMon(m) {
   return out;
 }
 
+// HMAC-SHA256 → байты
+async function hmac(keyBytes, msgBytes) {
+  const key = await crypto.subtle.importKey('raw', keyBytes, { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  return new Uint8Array(await crypto.subtle.sign('HMAC', key, msgBytes));
+}
+
+// Проверка подписи Telegram initData; возвращает объект user или null
+async function verifyInitData(env, initData) {
+  try {
+    if (!initData || initData.length > 4096) return null;
+    const p = new URLSearchParams(initData);
+    const hash = p.get('hash');
+    if (!hash) return null;
+    p.delete('hash');
+    const dcs = [...p.entries()].sort((a, b) => (a[0] < b[0] ? -1 : 1)).map(([k, v]) => k + '=' + v).join('\n');
+    const enc = new TextEncoder();
+    const secret = await hmac(enc.encode('WebAppData'), enc.encode(env.BOT_TOKEN));
+    const sig = await hmac(secret, enc.encode(dcs));
+    const hex = [...sig].map(b => b.toString(16).padStart(2, '0')).join('');
+    if (hex !== hash) return null;
+    return JSON.parse(p.get('user') || 'null');
+  } catch (e) { return null; }
+}
+
 async function tgApi(env, method, params) {
   const r = await fetch('https://api.telegram.org/bot' + env.BOT_TOKEN + '/' + method, {
     method: 'POST',
@@ -153,11 +177,48 @@ export default {
       return json({ link: r.result, price: SPRITE_PRICE_STARS });
     }
 
-    // --- статус покупки ---
+    // --- статус покупки (GET — совместимость со старыми клиентами) ---
     if (url.pathname === '/unlock' && req.method === 'GET') {
       const id = cleanId(url.searchParams.get('id'));
       if (id.length < 8) return json({ unlocked: false });
       return json({ unlocked: !!(await env.SNAPS.get('unlock:' + id)) });
+    }
+
+    // --- статус покупки + VIP по подписанному Telegram-id ---
+    if (url.pathname === '/unlock' && req.method === 'POST') {
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.id);
+      if (id.length < 8) return json({ unlocked: false });
+      if (await env.SNAPS.get('unlock:' + id)) return json({ unlocked: true });
+      // initData подписан Telegram — подделать чужой tg-id нельзя
+      if (body.initData) {
+        const user = await verifyInitData(env, body.initData);
+        if (user && user.id && await env.SNAPS.get('vip:' + user.id)) {
+          await env.SNAPS.put('unlock:' + id, 'vip');
+          return json({ unlocked: true, vip: true });
+        }
+      }
+      return json({ unlocked: false });
+    }
+
+    // --- промокод ---
+    if (url.pathname === '/redeem' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.id);
+      const code = String(body.code || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 32);
+      if (id.length < 8 || code.length < 4) return json({ ok: false });
+      const raw = await env.SNAPS.get('promo:' + code);
+      if (!raw) return json({ ok: false });
+      let promo;
+      try { promo = JSON.parse(raw); } catch (e) { return json({ ok: false }); }
+      if (!promo || !(promo.uses > 0)) return json({ ok: false });
+      promo.uses--;
+      await env.SNAPS.put('promo:' + code, JSON.stringify(promo));
+      await env.SNAPS.put('unlock:' + id, 'promo:' + code);
+      return json({ ok: true, left: promo.uses });
     }
 
     // --- webhook Telegram-бота ---
@@ -191,6 +252,13 @@ export default {
       }
 
       if (msg && msg.text) {
+        if (msg.text.startsWith('/id')) {
+          await tgApi(env, 'sendMessage', {
+            chat_id: msg.chat.id,
+            text: 'Твой Telegram ID: ' + (msg.from && msg.from.id),
+          });
+          return new Response('ok');
+        }
         await tgApi(env, 'sendMessage', {
           chat_id: msg.chat.id,
           text: 'Карманная Братва — лови братишек, прокачивай и сражайся!',

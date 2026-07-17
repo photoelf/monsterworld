@@ -64,7 +64,15 @@ try { sprUnlocked = localStorage.getItem('mw-spr-unlocked') === '1'; } catch (e)
 
 function netCheckUnlock(cb) {
   if (sprUnlocked || !API_BASE) { if (cb) cb(sprUnlocked); return; }
-  fetch(API_BASE + '/unlock?id=' + netClientId())
+  // initData подписан Telegram — VIP-игроки разблокируются автоматически
+  fetch(API_BASE + '/unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: netClientId(),
+      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
+    }),
+  })
     .then(r => r.json())
     .then(d => {
       if (d && d.unlocked) {
@@ -74,6 +82,24 @@ function netCheckUnlock(cb) {
       if (cb) cb(sprUnlocked);
     })
     .catch(() => { if (cb) cb(sprUnlocked); });
+}
+
+// Активация промокода: cb(true) при успехе
+function netRedeemCode(code, cb) {
+  fetch(API_BASE + '/redeem', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: netClientId(), code }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d && d.ok) {
+        sprUnlocked = true;
+        try { localStorage.setItem('mw-spr-unlocked', '1'); } catch (e) {}
+      }
+      if (cb) cb(!!(d && d.ok));
+    })
+    .catch(() => { if (cb) cb(false); });
 }
 
 // Открыть счёт в Stars; onDone зовётся после подтверждённой оплаты
