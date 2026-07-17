@@ -104,6 +104,19 @@
     background: #111; color: var(--ui-text);
     border: 2px solid var(--ui-border); border-radius: 4px; padding: 7px 10px; width: 220px;
   }
+  /* ---------- Титульный экран ---------- */
+  #title { padding: 0 20px; }
+  #title-logo {
+    width: 100%; text-align: center; line-height: 1.08;
+    font-size: min(15vw, 76px); letter-spacing: 1px;
+  }
+  #title-nick { opacity: .85; color: var(--ui-accent); font-size: 16px; }
+  #title-nick:empty { display: none; }
+  #btn-continue { width: min(100%, 420px); font-size: 18px; padding: 14px; }
+  .title-row { display: flex; gap: 8px; width: min(100%, 420px); }
+  .title-row button { flex: 0 0 auto; white-space: nowrap; }
+  /* !important: мобильные правила ниже по файлу задают инпутам фикс-ширину */
+  .title-row input[type=text] { flex: 1; min-width: 0; width: auto !important; }
   /* стартеры */
   #starters { display: flex; gap: 18px; }
   .starter {
@@ -133,9 +146,11 @@
     background: radial-gradient(ellipse at center, rgba(110,150,110,.5), rgba(0,0,0,0) 72%);
   }
   .bt-stand canvas { position: relative; z-index: 1; image-rendering: pixelated; }
-  /* стойка: лёгкое «дыхание» вверх-вниз; тень (::after) остаётся на земле */
-  #bt-pcanvas, #bt-ecanvas { animation: idlebob 1.3s ease-in-out infinite; }
-  #bt-ecanvas { animation-delay: .4s; }
+  /* стойка: лёгкое «дыхание» вверх-вниз; тень (::after) остаётся на земле.
+     ВАЖНО: правила ниже — классовой специфичности, id тут нельзя:
+     id-правило перебивало бы классы lunge и shake, и анимации атак не играли бы */
+  .bt-stand canvas { animation: idlebob 1.3s ease-in-out infinite; }
+  #bt-tcanvas { animation: none; }   /* тренер стоит смирно */
   @keyframes idlebob { 0%, 100% { transform: translateY(0); } 50% { transform: translateY(-3px); } }
   /* выпад к противнику при атаке */
   .bt-stand canvas.lunge-r { animation: lungeR .34s ease-out; }
@@ -366,18 +381,16 @@
 
   <!-- Титульный экран -->
   <div id="title" class="overlay">
-    <h1>КАРМАННАЯ БРАТВА</h1>
-    <div id="title-nick" style="opacity:.85;color:var(--ui-accent);"></div>
-    <p>Бесконечный процедурный мир: поля, леса, парки и города. Собирай карманную братву:
-       лови братишек, прокачивай их в братьев и братанов и сражайся с другими тренерами.</p>
-    <input type="text" id="seed-input" placeholder="сид мира (пусто = случайный)">
-    <div style="display:flex; gap:12px;">
+    <h1 id="title-logo">КАРМАННАЯ<br>БРАТВА</h1>
+    <div id="title-nick"></div>
+    <button id="btn-continue" class="hidden">Продолжить</button>
+    <div class="title-row">
       <button id="btn-new">Новый мир</button>
-      <button id="btn-continue" class="hidden">Продолжить</button>
+      <input type="text" id="seed-input" placeholder="сид мира">
     </div>
-    <div style="display:flex; gap:8px; align-items:center; margin-top:6px;">
-      <input type="text" id="import-code" placeholder="вставь код сейва с другой машины">
-      <button id="btn-import">Импорт</button>
+    <div class="title-row">
+      <button id="btn-import">Импорт сейва</button>
+      <input type="text" id="import-code" placeholder="вставь код">
     </div>
     <div id="import-error" style="color:#e05050; font-size:13px;"></div>
   </div>
