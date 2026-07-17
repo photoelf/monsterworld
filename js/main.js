@@ -1548,7 +1548,8 @@ function render() {
     const spr = monSprite(leader);
     // кастомный спрайт смотрит влево; игрок правее — флипаем, чтобы смотрел на него
     const flipF = !!leader.customSprite && spr instanceof Image && p.x > f.x;
-    const sw = spr.width, sh = spr.height;
+    const dims = monSpriteDims(leader, spr);
+    const sw = dims.w, sh = dims.h;
     const bounce = f.moving ? Math.round(Math.abs(Math.sin(f.bounceT * 9)) * 3) : 0;
     const fx = Math.round((f.x - camX) * TILE) - Math.floor(sw / 2);
     const fy = Math.round((f.y - camY) * TILE) - sh + 4 - bounce;
@@ -1558,10 +1559,10 @@ function render() {
     if (flipF) {
       ctx.save();
       ctx.scale(-1, 1);
-      ctx.drawImage(spr, -fx - sw, fy);
+      ctx.drawImage(spr, -fx - sw, fy, sw, sh);
       ctx.restore();
     } else {
-      ctx.drawImage(spr, fx, fy);
+      ctx.drawImage(spr, fx, fy, sw, sh);
     }
   }
 
@@ -1808,6 +1809,17 @@ function monSprite(m) {
   return speciesSprite(m.speciesSeed, m.stage, m.shiny);
 }
 
+// Габариты отрисовки: кастомный PNG приводится к размеру процедурного
+// спрайта той же стадии (12/15/18), чтобы братишка не вымахал больше игрока
+function monSpriteDims(m, spr) {
+  if (spr instanceof Image) {
+    const target = 12 + ((m.stage | 0) * 3);
+    const k = target / Math.max(spr.width, spr.height);
+    return { w: Math.max(1, Math.round(spr.width * k)), h: Math.max(1, Math.round(spr.height * k)) };
+  }
+  return { w: spr.width, h: spr.height };
+}
+
 // Пикселизация загруженной картинки: автообрезка по прозрачности + даунскейл до 24×24
 function pixelateImage(img) {
   const w0 = img.naturalWidth || img.width, h0 = img.naturalHeight || img.height;
@@ -1847,7 +1859,8 @@ function monMiniCanvas(m, size) {
   const c = cv.getContext('2d');
   c.imageSmoothingEnabled = false;
   const spr = monSprite(m);
-  c.drawImage(spr, Math.floor((size - spr.width) / 2), Math.floor((size - spr.height) / 2));
+  const d = monSpriteDims(m, spr);
+  c.drawImage(spr, Math.floor((size - d.w) / 2), Math.floor((size - d.h) / 2), d.w, d.h);
   return cv;
 }
 

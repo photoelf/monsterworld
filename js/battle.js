@@ -88,20 +88,21 @@ const Battle = {
 
   drawSprite(canvasId, mon, flip, back) {
     const cv = this.el(canvasId);
-    // кастомный PNG: рисуем как есть (вид «со спины» к нему неприменим)
+    // кастомный PNG: рисуем в размере процедурного спрайта той же стадии
     const custom = mon.customSprite && typeof customSpriteImg === 'function' ? customSpriteImg(mon.customSprite) : null;
     const sp = custom || speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back);
+    const d = typeof monSpriteDims === 'function' ? monSpriteDims(mon, sp) : { w: sp.width, h: sp.height };
     cv.width = 32; cv.height = 32;
     const ctx = cv.getContext('2d');
     ctx.imageSmoothingEnabled = false;
     ctx.clearRect(0, 0, 32, 32);
-    const off = Math.floor((32 - sp.width) / 2);
+    const off = Math.floor((32 - d.w) / 2);
     if (flip) {
       ctx.save(); ctx.scale(-1, 1);
-      ctx.drawImage(sp, -off - sp.width, 32 - sp.height - 2);
+      ctx.drawImage(sp, -off - d.w, 32 - d.h - 2, d.w, d.h);
       ctx.restore();
     } else {
-      ctx.drawImage(sp, off, 32 - sp.height - 2);
+      ctx.drawImage(sp, off, 32 - d.h - 2, d.w, d.h);
     }
   },
 

@@ -58,7 +58,7 @@ function netTakeRival() {
 
 // ===== Покупка загрузки кастомных спрайтов (Telegram Stars) =====
 
-const SPRITE_PRICE = 100;   // держать в синхроне с воркером
+const SPRITE_PRICE = 10;   // держать в синхроне с воркером (SPRITE_PRICE_STARS)
 let sprUnlocked = false;
 try { sprUnlocked = localStorage.getItem('mw-spr-unlocked') === '1'; } catch (e) {}
 
