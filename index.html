@@ -297,20 +297,26 @@
   }
   body.mobile .prow, body.mobile .srow, body.mobile .arow { width: 100%; }
   body.mobile .prow .info, body.mobile .srow .info, body.mobile .arow > span:last-child { min-width: 0; }
-  body.mobile .prow { flex-wrap: wrap; }
-  /* инфо занимает первую строку рядом со спрайтом; кнопки действий переносятся вниз */
-  body.mobile .prow .info { flex: 1 1 calc(100% - 90px); }
   body.mobile .prow .info .bar { width: 100%; }
-  body.mobile .prow button { min-height: 36px; font-size: 13px; }
-  body.mobile .prow .mv button { min-height: 30px; }
+  body.mobile .prow button { min-height: 40px; font-size: 13px; }
   body.mobile #dex-grid { max-height: none; }
   body.mobile .dcard { width: calc(50% - 5px); }
   body.mobile #map-canvas { max-width: 100%; height: auto; }
   body.mobile #export-code, body.mobile #friend-code-in { width: 100% !important; }
   body.mobile input[type=text] { width: min(320px, 88vw); font-size: 16px; }
   body.mobile textarea { font-size: 16px !important; }
-  body.mobile .starter { width: min(44vw, 170px); padding: 8px; }
-  body.mobile .starter canvas { width: min(30vw, 128px); height: auto; }
+  /* стартеры: без переноса 2+1 — в портрете колонка, в ландшафте ровный ряд */
+  body.mobile #starters { flex-wrap: nowrap; justify-content: center; }
+  body.mobile .starter { width: min(28vw, 170px); padding: 8px; }
+  body.mobile .starter canvas { width: min(18vw, 110px); height: auto; }
+  @media (orientation: portrait) {
+    body.mobile #starters { flex-direction: column; align-items: center; width: 100%; gap: 10px; }
+    body.mobile .starter {
+      width: min(94vw, 360px); display: flex; align-items: center;
+      gap: 14px; text-align: left; padding: 8px 14px;
+    }
+    body.mobile .starter canvas { width: 72px; height: 72px; flex-shrink: 0; }
+  }
   /* бой на мобильном */
   body.mobile #battle { padding: 10px; gap: 8px; }
   body.mobile #bt-scene { max-width: none; }
@@ -491,6 +497,13 @@
       <button id="btn-storage-open">📦 Монстрохранилище</button>
       <button id="btn-party-close">Закрыть (Tab)</button>
     </div>
+  </div>
+
+  <!-- Монстрик подробно -->
+  <div id="mon-panel" class="overlay hidden">
+    <h1 style="font-size:20px;" id="mon-title"></h1>
+    <div id="mon-body" style="display:flex;flex-direction:column;gap:10px;width:min(560px,94vw);"></div>
+    <button id="btn-mon-close">‹ Назад к команде</button>
   </div>
 
   <!-- Монстрохранилище -->

@@ -410,7 +410,7 @@ function showStarterPick() {
     const c = cv.getContext('2d');
     c.imageSmoothingEnabled = false;
     const spr = speciesSprite(seed, 0);
-    c.drawImage(spr, Math.floor((32 - spr.width) / 2), 32 - spr.height - 2);
+    c.drawImage(spr, Math.floor((32 - spr.width) / 2), Math.floor((32 - spr.height) / 2));
     div.appendChild(cv);
     const t = TYPE_INFO[sp.stages[0].type];
     const info = document.createElement('div');
@@ -1725,7 +1725,7 @@ function monMiniCanvas(m, size) {
   const c = cv.getContext('2d');
   c.imageSmoothingEnabled = false;
   const spr = speciesSprite(m.speciesSeed, m.stage, m.shiny);
-  c.drawImage(spr, Math.floor((size - spr.width) / 2), size - spr.height - 1);
+  c.drawImage(spr, Math.floor((size - spr.width) / 2), Math.floor((size - spr.height) / 2));
   return cv;
 }
 
@@ -1945,7 +1945,7 @@ function toggleDex() {
     c.imageSmoothingEnabled = false;
     const isShiny = G.dex.shiny.has(seed);
     const spr = speciesSprite(seed, 0, isShiny);
-    c.drawImage(isCaught ? spr : silhouette(spr), Math.floor((24 - spr.width) / 2), 24 - spr.height - 1);
+    c.drawImage(isCaught ? spr : silhouette(spr), Math.floor((24 - spr.width) / 2), Math.floor((24 - spr.height) / 2));
     card.appendChild(cv);
     const t = TYPE_INFO[sp.stages[0].type];
     const info = document.createElement('div');
@@ -1966,9 +1966,6 @@ function toggleDex() {
 
 // ===== Панель команды =====
 
-// Какие карточки в «Команде» развёрнуты (переживает перерисовку панели)
-const _partyExpanded = new Set();
-
 function togglePartyPanel() {
   const panel = document.getElementById('party-panel');
   if (G.state === 'party') {
@@ -1978,20 +1975,19 @@ function togglePartyPanel() {
   }
   if (G.state !== 'world') return;
   G.state = 'party';
+  renderPartyRows();
+  panel.classList.remove('hidden');
+}
+
+// Компактный список: спрайт, имя, уровень, тип, эво, ОЗ — детали в модалке
+function renderPartyRows() {
   const rows = document.getElementById('party-rows');
   rows.innerHTML = '';
   G.party.forEach((m, i) => {
-    const sp = getSpecies(m.speciesSeed);
-    const st = sp.stages[m.stage];
+    const st = getSpecies(m.speciesSeed).stages[m.stage];
     const row = document.createElement('div');
     row.className = 'prow';
-    const cv = document.createElement('canvas');
-    cv.width = 28; cv.height = 28;
-    const c = cv.getContext('2d');
-    c.imageSmoothingEnabled = false;
-    const spr = speciesSprite(m.speciesSeed, m.stage, m.shiny);
-    c.drawImage(spr, Math.floor((28 - spr.width) / 2), 28 - spr.height - 1);
-    row.appendChild(cv);
+    row.appendChild(monMiniCanvas(m, 28));
 
     const t = TYPE_INFO[st.type];
     const pct = Math.max(0, m.hp / m.maxHp * 100);
@@ -2005,183 +2001,212 @@ function togglePartyPanel() {
       '<div style="opacity:.75;font-size:11px">' + m.hp + '/' + m.maxHp + ' ОЗ</div>';
     row.appendChild(info);
 
-    // подробности (статы, атаки, действия) — скрыты за кнопкой
-    const details = document.createElement('div');
-    details.style.cssText = 'width:100%;display:flex;flex-wrap:wrap;gap:6px;align-items:center;';
-    if (!_partyExpanded.has(i)) details.classList.add('hidden');
-    const statLine = document.createElement('div');
-    statLine.style.cssText = 'width:100%;opacity:.75;font-size:11px;';
-    statLine.innerHTML = 'АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd +
-      ' · опыт ' + m.exp + '/' + expToNext(m.level);
-    details.appendChild(statLine);
-    // атаки: клик — поднять выше в списке
-    const mvDiv = document.createElement('div');
-    mvDiv.className = 'mv';
-    mvDiv.style.width = '100%';
-    m.moves.forEach((mv, mi) => {
-      const mb = document.createElement('button');
-      mb.style.cssText = 'font-size:10px;padding:2px 6px;margin:2px 3px 0 0;';
-      mb.title = 'Клик — поднять атаку выше в списке';
-      mb.innerHTML = (mi + 1) + '. ' + mv.name + ' <span style="color:' + TYPE_INFO[mv.type].color + '">' +
-        TYPE_INFO[mv.type].ru + '</span> ' + mv.power + ' · ПП ' + mv.pp + '/' + mv.maxPp;
-      mb.onclick = () => {
-        if (mi === 0) return;
-        [m.moves[mi - 1], m.moves[mi]] = [m.moves[mi], m.moves[mi - 1]];
-        G.state = 'world'; togglePartyPanel(); // перерисовать
-        saveGame();
-      };
-      mvDiv.appendChild(mb);
-    });
-    details.appendChild(mvDiv);
-
     const bMore = document.createElement('button');
-    const setMoreLabel = () => { bMore.textContent = _partyExpanded.has(i) ? 'Свернуть ▴' : 'Подробнее ▾'; };
-    setMoreLabel();
-    bMore.onclick = () => {
-      if (_partyExpanded.has(i)) _partyExpanded.delete(i); else _partyExpanded.add(i);
-      details.classList.toggle('hidden');
-      setMoreLabel();
-    };
+    bMore.textContent = 'ℹ️';
+    bMore.title = 'Подробнее';
+    bMore.onclick = () => openMonDetail(i);
     row.appendChild(bMore);
-
-    // кличка
-    const bNick = document.createElement('button');
-    bNick.textContent = '✏️';
-    bNick.title = 'Дать кличку';
-    bNick.onclick = () => {
-      const nn = prompt('Кличка для ' + st.name + ' (пусто — сбросить):', m.nick || '');
-      if (nn === null) return;
-      m.nick = nn.trim().slice(0, 12) || null;
-      G.state = 'world'; togglePartyPanel();
-      updateHUD(); saveGame();
-    };
-    details.appendChild(bNick);
-
-    // амулет: выпадающий выбор
-    if (m.charm || Object.values(G.charms).some(n => n > 0)) {
-      const sel = document.createElement('select');
-      sel.style.cssText = 'font-family:inherit;font-size:11px;background:#111;color:#e8e8f0;border:2px solid var(--ui-border);border-radius:4px;padding:3px;';
-      const optNone = document.createElement('option');
-      optNone.value = '';
-      optNone.textContent = m.charm ? '— снять амулет —' : '🧿 амулет...';
-      sel.appendChild(optNone);
-      for (const [kind, ch] of Object.entries(CHARMS)) {
-        if (kind !== m.charm && G.charms[kind] < 1) continue;
-        const opt = document.createElement('option');
-        opt.value = kind;
-        opt.textContent = ch.ic + ' ' + ch.name + ' (' + ch.desc + ')';
-        if (kind === m.charm) opt.selected = true;
-        sel.appendChild(opt);
-      }
-      sel.onchange = () => {
-        const ratio = m.hp / m.maxHp;
-        if (m.charm) G.charms[m.charm]++;      // вернуть старый в сумку
-        m.charm = sel.value || null;
-        if (m.charm) G.charms[m.charm]--;
-        recalcStats(m);
-        m.hp = Math.max(1, Math.round(m.maxHp * ratio));
-        G.state = 'world'; togglePartyPanel();
-        updateHUD(); saveGame();
-      };
-      details.appendChild(sel);
-    }
-    // камень эволюции
-    if (G.bag.stone > 0 && st.evolveLevel !== null) {
-      const bStone = document.createElement('button');
-      bStone.textContent = '🪨 Эво';
-      bStone.title = 'Камень эволюции: эволюционировать сейчас';
-      bStone.onclick = () => {
-        if (!confirm('Эволюционировать ' + monName(m) + ' камнем? Камень исчезнет.')) return;
-        G.bag.stone--;
-        const ratio = m.hp / m.maxHp;
-        const oldName = monSpeciesName(m);
-        m.stage++;
-        recalcStats(m);
-        m.hp = Math.max(1, Math.round(m.maxHp * ratio));
-        G.stats.evolutions++;
-        dexCaught(m);
-        sfx('catch');
-        toast('🪨 ' + oldName + ' эволюционирует в ' + monSpeciesName(m) + '!');
-        G.state = 'world'; togglePartyPanel();
-        updateHUD(); saveGame();
-      };
-      details.appendChild(bStone);
-    }
-    // научить со свитка
-    if (G.scrolls.length) {
-      const bTeach = document.createElement('button');
-      bTeach.textContent = '📜 (' + G.scrolls.length + ')';
-      bTeach.title = 'Научить умению со свитка';
-      bTeach.onclick = () => openTeach(m);
-      details.appendChild(bTeach);
-    }
-    // эфир
-    if (G.bag.ether > 0 && m.moves.some(mv => mv.pp < mv.maxPp)) {
-      const bEth = document.createElement('button');
-      bEth.textContent = '💧 Эфир';
-      bEth.onclick = () => {
-        G.bag.ether--;
-        m.moves.forEach(mv => { mv.pp = mv.maxPp; });
-        sfx('heal');
-        G.state = 'world'; togglePartyPanel();
-        updateHUD(); saveGame();
-      };
-      details.appendChild(bEth);
-    }
-
-    if (m.hp < m.maxHp && G.bag.potion > 0) {
-      const bPot = document.createElement('button');
-      bPot.textContent = '🧪 Зелье (x' + G.bag.potion + ')';
-      bPot.onclick = () => {
-        G.bag.potion--;
-        m.hp = Math.min(m.maxHp, m.hp + Math.ceil(m.maxHp / 2));
-        sfx('heal');
-        G.state = 'world';
-        togglePartyPanel();
-        updateHUD(); saveGame();
-      };
-      details.appendChild(bPot);
-    }
-    if (m.status && G.bag.tonic > 0) {
-      const bTon = document.createElement('button');
-      bTon.textContent = '💊 Тоник';
-      bTon.onclick = () => {
-        G.bag.tonic--;
-        m.status = null;
-        sfx('heal');
-        G.state = 'world';
-        togglePartyPanel();
-        updateHUD(); saveGame();
-      };
-      details.appendChild(bTon);
-    }
-    if (i > 0) {
-      const bLead = document.createElement('button');
-      bLead.textContent = '⭐ Лидер';
-      bLead.onclick = () => {
-        G.party.splice(i, 1);
-        G.party.unshift(m);
-        G.state = 'world';
-        togglePartyPanel();
-        updateHUD(); saveGame();
-      };
-      details.appendChild(bLead);
-    }
-    if (G.party.length > 1) {
-      const bBox = document.createElement('button');
-      bBox.textContent = '📦';
-      bBox.title = 'Убрать в Монстрохранилище';
-      bBox.onclick = () => {
-        storageDeposit(i);
-        G.state = 'world';
-        togglePartyPanel();
-      };
-      details.appendChild(bBox);
-    }
-    row.appendChild(details);
     rows.appendChild(row);
   });
-  panel.classList.remove('hidden');
+}
+
+// ===== Модалка одного монстрика =====
+
+function closeMonDetail() {
+  document.getElementById('mon-panel').classList.add('hidden');
+  G.state = 'world';
+  togglePartyPanel(); // назад к списку команды
+}
+
+function openMonDetail(i) {
+  const m = G.party[i];
+  if (!m) { closeMonDetail(); return; }
+  document.getElementById('party-panel').classList.add('hidden');
+  G.state = 'mondetail';
+  const sp = getSpecies(m.speciesSeed);
+  const st = sp.stages[m.stage];
+  const t = TYPE_INFO[st.type];
+  // после действия перерисовываем модалку этого же монстрика
+  const rerender = () => { updateHUD(); saveGame(); openMonDetail(i); };
+
+  document.getElementById('mon-title').innerHTML =
+    (m.shiny ? '✨' : '') + monName(m) + (m.nick ? ' <span style="opacity:.6;font-size:14px">(' + st.name + ')</span>' : '');
+  const body = document.getElementById('mon-body');
+  body.innerHTML = '';
+
+  // шапка: крупный спрайт + основные цифры
+  const head = document.createElement('div');
+  head.style.cssText = 'display:flex;align-items:center;gap:16px;';
+  const cv = monMiniCanvas(m, 36);
+  cv.style.cssText = 'width:120px;height:120px;image-rendering:pixelated;flex-shrink:0;';
+  head.appendChild(cv);
+  const pct = Math.max(0, m.hp / m.maxHp * 100);
+  const info = document.createElement('div');
+  info.style.cssText = 'text-align:left;font-size:13px;flex:1;min-width:0;line-height:1.6;';
+  info.innerHTML =
+    '<div>Ур.' + m.level + statusTag(m) + ' · <span style="color:' + t.color + '">' + t.ru + '</span> · ' +
+    (st.evolveLevel ? 'эво на ' + st.evolveLevel : 'финальная форма') + '</div>' +
+    '<div class="bar" style="height:8px;margin:4px 0"><i class="' + (pct < 30 ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
+    '<div style="opacity:.85">' + m.hp + '/' + m.maxHp + ' ОЗ · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd + '</div>' +
+    '<div style="opacity:.85">Опыт: ' + m.exp + '/' + expToNext(m.level) + '</div>' +
+    (m.charm ? '<div style="opacity:.85">Амулет: ' + CHARMS[m.charm].ic + ' ' + CHARMS[m.charm].name + '</div>' : '');
+  head.appendChild(info);
+  body.appendChild(head);
+
+  // умения: тап — поднять выше в списке
+  const mvTitle = document.createElement('div');
+  mvTitle.style.cssText = 'opacity:.7;font-size:12px;text-align:left;';
+  mvTitle.textContent = 'Умения (тап — поднять выше):';
+  body.appendChild(mvTitle);
+  const mvDiv = document.createElement('div');
+  mvDiv.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+  m.moves.forEach((mv, mi) => {
+    const mb = document.createElement('button');
+    mb.style.textAlign = 'left';
+    mb.innerHTML = (mi + 1) + '. ' + mv.name + ' <span style="color:' + TYPE_INFO[mv.type].color + '">' +
+      TYPE_INFO[mv.type].ru + '</span> · сила ' + mv.power + ' · ПП ' + mv.pp + '/' + mv.maxPp;
+    mb.onclick = () => {
+      if (mi === 0) return;
+      [m.moves[mi - 1], m.moves[mi]] = [m.moves[mi], m.moves[mi - 1]];
+      saveGame();
+      openMonDetail(i);
+    };
+    mvDiv.appendChild(mb);
+  });
+  body.appendChild(mvDiv);
+
+  // действия
+  const acts = document.createElement('div');
+  acts.style.cssText = 'display:flex;flex-wrap:wrap;gap:8px;justify-content:center;';
+
+  const bNick = document.createElement('button');
+  bNick.textContent = '✏️ Кличка';
+  bNick.onclick = () => {
+    const nn = prompt('Кличка для ' + st.name + ' (пусто — сбросить):', m.nick || '');
+    if (nn === null) return;
+    m.nick = nn.trim().slice(0, 12) || null;
+    rerender();
+  };
+  acts.appendChild(bNick);
+
+  if (m.charm || Object.values(G.charms).some(n => n > 0)) {
+    const sel = document.createElement('select');
+    sel.style.cssText = 'font-family:inherit;font-size:12px;background:#111;color:#e8e8f0;border:2px solid var(--ui-border);border-radius:4px;padding:6px;max-width:94%;';
+    const optNone = document.createElement('option');
+    optNone.value = '';
+    optNone.textContent = m.charm ? '— снять амулет —' : '🧿 амулет...';
+    sel.appendChild(optNone);
+    for (const [kind, ch] of Object.entries(CHARMS)) {
+      if (kind !== m.charm && G.charms[kind] < 1) continue;
+      const opt = document.createElement('option');
+      opt.value = kind;
+      opt.textContent = ch.ic + ' ' + ch.name + ' (' + ch.desc + ')';
+      if (kind === m.charm) opt.selected = true;
+      sel.appendChild(opt);
+    }
+    sel.onchange = () => {
+      const ratio = m.hp / m.maxHp;
+      if (m.charm) G.charms[m.charm]++;      // вернуть старый в сумку
+      m.charm = sel.value || null;
+      if (m.charm) G.charms[m.charm]--;
+      recalcStats(m);
+      m.hp = Math.max(1, Math.round(m.maxHp * ratio));
+      rerender();
+    };
+    acts.appendChild(sel);
+  }
+
+  if (G.bag.stone > 0 && st.evolveLevel !== null) {
+    const bStone = document.createElement('button');
+    bStone.textContent = '🪨 Эво-камень';
+    bStone.onclick = () => {
+      if (!confirm('Эволюционировать ' + monName(m) + ' камнем? Камень исчезнет.')) return;
+      G.bag.stone--;
+      const ratio = m.hp / m.maxHp;
+      const oldName = monSpeciesName(m);
+      m.stage++;
+      recalcStats(m);
+      m.hp = Math.max(1, Math.round(m.maxHp * ratio));
+      G.stats.evolutions++;
+      dexCaught(m);
+      sfx('catch');
+      toast('🪨 ' + oldName + ' эволюционирует в ' + monSpeciesName(m) + '!');
+      rerender();
+    };
+    acts.appendChild(bStone);
+  }
+
+  if (G.scrolls.length) {
+    const bTeach = document.createElement('button');
+    bTeach.textContent = '📜 Свитки (' + G.scrolls.length + ')';
+    bTeach.onclick = () => {
+      document.getElementById('mon-panel').classList.add('hidden');
+      G.state = 'world';
+      openTeach(m);
+    };
+    acts.appendChild(bTeach);
+  }
+
+  if (G.bag.ether > 0 && m.moves.some(mv => mv.pp < mv.maxPp)) {
+    const bEth = document.createElement('button');
+    bEth.textContent = '💧 Эфир';
+    bEth.onclick = () => {
+      G.bag.ether--;
+      m.moves.forEach(mv => { mv.pp = mv.maxPp; });
+      sfx('heal');
+      rerender();
+    };
+    acts.appendChild(bEth);
+  }
+
+  if (m.hp < m.maxHp && G.bag.potion > 0) {
+    const bPot = document.createElement('button');
+    bPot.textContent = '🧪 Зелье (x' + G.bag.potion + ')';
+    bPot.onclick = () => {
+      G.bag.potion--;
+      m.hp = Math.min(m.maxHp, m.hp + Math.ceil(m.maxHp / 2));
+      sfx('heal');
+      rerender();
+    };
+    acts.appendChild(bPot);
+  }
+
+  if (m.status && G.bag.tonic > 0) {
+    const bTon = document.createElement('button');
+    bTon.textContent = '💊 Тоник';
+    bTon.onclick = () => {
+      G.bag.tonic--;
+      m.status = null;
+      sfx('heal');
+      rerender();
+    };
+    acts.appendChild(bTon);
+  }
+
+  if (i > 0) {
+    const bLead = document.createElement('button');
+    bLead.textContent = '⭐ Сделать лидером';
+    bLead.onclick = () => {
+      G.party.splice(i, 1);
+      G.party.unshift(m);
+      updateHUD(); saveGame();
+      openMonDetail(0);
+    };
+    acts.appendChild(bLead);
+  }
+
+  if (G.party.length > 1) {
+    const bBox = document.createElement('button');
+    bBox.textContent = '📦 В хранилище';
+    bBox.onclick = () => {
+      storageDeposit(i);
+      closeMonDetail();
+    };
+    acts.appendChild(bBox);
+  }
+
+  body.appendChild(acts);
+  document.getElementById('mon-panel').classList.remove('hidden');
 }
 
 // ===== Инициализация =====
@@ -2204,6 +2229,7 @@ function initInput() {
     if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
     if (e.key === 'Escape') {
       if (G.state === 'party') { togglePartyPanel(); return; }
+      if (G.state === 'mondetail') { closeMonDetail(); return; }
       if (G.state === 'shop') { closeShop(); return; }
       if (G.state === 'dex') { toggleDex(); return; }
       if (G.state === 'map') { toggleMap(); return; }
@@ -2247,6 +2273,7 @@ function initTitle() {
     }
   };
   document.getElementById('btn-party-close').onclick = () => togglePartyPanel();
+  document.getElementById('btn-mon-close').onclick = () => closeMonDetail();
   document.getElementById('btn-shop-close').onclick = () => closeShop();
   document.getElementById('btn-dex-close').onclick = () => toggleDex();
   document.getElementById('btn-map-close').onclick = () => toggleMap();
