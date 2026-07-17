@@ -1,13 +1,18 @@
 'use strict';
 
-// ===== Monsterworld API: снапшоты команд игроков =====
-// Cloudflare Worker + KV (binding SNAPS).
+// ===== Monsterworld API: снапшоты команд игроков + Stars-платежи =====
+// Cloudflare Worker + KV (binding SNAPS). Секреты: BOT_TOKEN, WEBHOOK_SECRET.
 // POST /team          {id, nick, team:[monDump...]} — залить свою команду
 // GET  /team/random?not=<id>                        — случайная чужая команда
+// POST /invoice       {id}                          — ссылка-счёт Telegram Stars
+// POST /bot                                          — webhook Telegram-бота
+// GET  /unlock?id=<id>                              — куплена ли загрузка спрайтов
 // GET  /health                                      — проверка живости
 //
 // Снапшоты валидируются и здесь, и на клиенте (tradeMonRevive пересчитывает
 // статы из вида — «нарисовать» имбу нельзя). Ник — только буквы/цифры/._- .
+
+const SPRITE_PRICE_STARS = 100;   // цена разблокировки кастомных спрайтов, XTR
 
 const INDEX_KEY = 'idx';
 const INDEX_CAP = 1500;         // сколько команд держим в ротации
@@ -53,6 +58,19 @@ function validMon(m) {
     maxPp: Math.min(20, Math.max(4, (mv && mv.maxPp) | 0 || 10)),
   }));
   return out;
+}
+
+async function tgApi(env, method, params) {
+  const r = await fetch('https://api.telegram.org/bot' + env.BOT_TOKEN + '/' + method, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(params),
+  });
+  return r.json();
+}
+
+function cleanId(raw) {
+  return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
 }
 
 async function rateLimited(env, ip) {
@@ -114,6 +132,72 @@ export default {
         if (raw) return json({ snap: JSON.parse(raw) });
       }
       return json({ snap: null });
+    }
+
+    // --- счёт на разблокировку кастомных спрайтов (Telegram Stars) ---
+    if (url.pathname === '/invoice' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.id);
+      if (id.length < 8) return json({ err: 'bad id' }, 400);
+      if (await env.SNAPS.get('unlock:' + id)) return json({ err: 'already unlocked' }, 409);
+      const r = await tgApi(env, 'createInvoiceLink', {
+        title: 'Свои спрайты братвы',
+        description: 'Загружай собственные PNG-облики для своих братишек. Навсегда.',
+        payload: 'spr:' + id,
+        currency: 'XTR',
+        prices: [{ label: 'Разблокировка', amount: SPRITE_PRICE_STARS }],
+      });
+      if (!r.ok) return json({ err: 'tg error' }, 502);
+      return json({ link: r.result, price: SPRITE_PRICE_STARS });
+    }
+
+    // --- статус покупки ---
+    if (url.pathname === '/unlock' && req.method === 'GET') {
+      const id = cleanId(url.searchParams.get('id'));
+      if (id.length < 8) return json({ unlocked: false });
+      return json({ unlocked: !!(await env.SNAPS.get('unlock:' + id)) });
+    }
+
+    // --- webhook Telegram-бота ---
+    if (url.pathname === '/bot' && req.method === 'POST') {
+      if (req.headers.get('X-Telegram-Bot-Api-Secret-Token') !== env.WEBHOOK_SECRET) {
+        return new Response('forbidden', { status: 403 });
+      }
+      let upd;
+      try { upd = await req.json(); } catch (e) { return new Response('ok'); }
+
+      if (upd.pre_checkout_query) {
+        await tgApi(env, 'answerPreCheckoutQuery', {
+          pre_checkout_query_id: upd.pre_checkout_query.id,
+          ok: true,
+        });
+        return new Response('ok');
+      }
+
+      const msg = upd.message;
+      if (msg && msg.successful_payment) {
+        const payload = String(msg.successful_payment.invoice_payload || '');
+        if (payload.startsWith('spr:')) {
+          const id = cleanId(payload.slice(4));
+          if (id.length >= 8) await env.SNAPS.put('unlock:' + id, '1');
+        }
+        await tgApi(env, 'sendMessage', {
+          chat_id: msg.chat.id,
+          text: '⭐ Спасибо за поддержку Карманной Братвы! Загрузка своих спрайтов открыта — вернись в игру и обнови её.',
+        });
+        return new Response('ok');
+      }
+
+      if (msg && msg.text) {
+        await tgApi(env, 'sendMessage', {
+          chat_id: msg.chat.id,
+          text: 'Карманная Братва — лови братишек, прокачивай и сражайся!',
+          reply_markup: { inline_keyboard: [[{ text: '🎮 Играть', web_app: { url: 'https://photoelf.github.io/monsterworld/' } }]] },
+        });
+      }
+      return new Response('ok');
     }
 
     return json({ err: 'not found' }, 404);

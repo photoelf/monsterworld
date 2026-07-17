@@ -120,7 +120,7 @@ function pvpSimulate(teamAd, teamBd, seed) {
 
 function pvpCreateChallenge() {
   if (G.pvpOut) return { err: 'У тебя уже есть неотвеченный вызов — дождись ответа или отмени его.' };
-  if (!G.party.length) return { err: 'Нужна команда!' };
+  if (!G.party.length) return { err: 'Нужна братва!' };
   const team = G.party.map(tradeMonDump);
   const pvpId = (hash2u((Math.random() * 1e9) | 0, (Math.random() * 1e9) | 0, Date.now() & 0xffffffff) >>> 0).toString(16);
   const nonce = ((Math.random() * 4294967296) >>> 0).toString(16);
@@ -133,7 +133,7 @@ function pvpCreateChallenge() {
 function pvpAnswer(payload) {
   if (G.pvpOut && G.pvpOut.pvpId === payload.pvpId) return { err: 'Это твой собственный вызов!' };
   if (G.usedTrades.has('pvp:' + payload.pvpId)) return { err: 'Этот бой уже был сыгран.' };
-  if (!G.party.length) return { err: 'Нужна команда!' };
+  if (!G.party.length) return { err: 'Нужна братва!' };
   const myTeam = G.party.map(tradeMonDump);
   const nonce = ((Math.random() * 4294967296) >>> 0).toString(16);
   const seed = pvpSeed(payload.pvpId, payload.nonce, nonce, payload.team, myTeam);
@@ -181,7 +181,7 @@ function pvpChallengeFlow() {
   const r = pvpCreateChallenge();
   if (r.err) { friendError(r.err); return; }
   const info = document.createElement('div');
-  info.innerHTML = '<b style="color:var(--ui-accent)">⚔️ Вызов создан!</b> Твоя команда (' + G.party.length +
+  info.innerHTML = '<b style="color:var(--ui-accent)">⚔️ Вызов создан!</b> Твоя братва (' + G.party.length +
     ') зафиксирована в коде.<br><span style="opacity:.8;font-size:12px">Друг вставит код и сразу увидит бой; тебе он пришлёт ответный код.</span>';
   main.appendChild(info);
   friendShowCode('Код вызова — отправь другу:', r.code);
@@ -192,11 +192,11 @@ function pvpAnswerFlow(payload) {
   main.innerHTML = '';
   const title = document.createElement('b');
   title.style.color = 'var(--ui-accent)';
-  title.textContent = '⚔️ Тебя вызывают на бой! Команда соперника (' + payload.team.length + '):';
+  title.textContent = '⚔️ Тебя вызывают на бой! Братва соперника (' + payload.team.length + '):';
   main.appendChild(title);
   payload.team.forEach(md => main.appendChild(friendMonRow(md)));
   const btn = document.createElement('button');
-  btn.textContent = '⚔️ Принять бой текущей командой (' + G.party.length + ')';
+  btn.textContent = '⚔️ Принять бой текущей братвой (' + G.party.length + ')';
   btn.onclick = () => {
     const r = pvpAnswer(payload);
     if (r.err) { friendError(r.err); return; }

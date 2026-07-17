@@ -328,7 +328,7 @@ const Battle = {
           ? { label: 'Поймать', small: 'сфер: ' + G.orbs, disabled: G.orbs < 1 }
           : { label: 'Поймать', small: 'нельзя: чужой', disabled: true },
         { label: 'Предметы' },
-        { label: 'Команда' },
+        { label: 'Братва' },
         { label: 'Бежать', disabled: opts.kind === 'trainer' },
       ];
       const act = await this.menu(actions);
@@ -373,27 +373,27 @@ const Battle = {
           if (party.length < 6) {
             party.push(em);
           } else {
-            this.note('Команда полна! Куда отправить ' + monName(em) + '?');
+            this.note('Братва в полном составе! Куда отправить ' + monName(em) + '?');
             const choice = await this.menu([
-              { label: '📦 В общак', small: 'хранится: ' + G.storage.length },
-              { label: 'Взять в команду', small: 'заменяемый уйдёт в хранилище' },
+              { label: '📦 В карман', small: 'хранится: ' + G.storage.length },
+              { label: 'Взять в братву', small: 'заменяемый уйдёт в карман' },
             ]);
             if (choice === 0) {
               G.storage.push(em);
-              await this.say(monName(em) + ' отправлен в общак (B).');
+              await this.say(monName(em) + ' отправлен в карман (B).');
             } else {
-              this.note('Кто уступит место? (Назад — нового в хранилище)');
+              this.note('Кто уступит место? (Назад — нового в карман)');
               const ri = await this.menu(party.map(m => ({
                 label: monName(m) + ' (Ур.' + m.level + ')',
                 small: m.hp + '/' + m.maxHp + ' ОЗ',
               })), true);
               if (ri >= 0) {
                 G.storage.push(party[ri]);
-                await this.say(monName(party[ri]) + ' отправляется в хранилище, ' + monName(em) + ' — в команду!');
+                await this.say(monName(party[ri]) + ' отправляется в карман, ' + monName(em) + ' — в братву!');
                 party[ri] = em;
               } else {
                 G.storage.push(em);
-                await this.say(monName(em) + ' отправлен в общак (B).');
+                await this.say(monName(em) + ' отправлен в карман (B).');
               }
             }
           }

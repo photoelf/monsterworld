@@ -62,7 +62,7 @@ const ACHIEVEMENTS = [
   { id: 'catch25',  ic: '📚', name: 'Архивариус',       desc: 'Поймай 25 видов',                    test: () => G.dex.caught.size >= 25 },
   { id: 'shiny1',   ic: '✨', name: 'Золотая лихорадка', desc: 'Поймай сияющего братишку',          test: () => G.dex.shiny.size >= 1 },
   { id: 'evolve1',  ic: '🦋', name: 'Метаморфоза',      desc: 'Прокачай братишку в брата',            test: () => G.stats.evolutions >= 1 },
-  { id: 'party6',   ic: '👥', name: 'Полный состав',    desc: 'Собери команду из 6',                test: () => G.party.length >= 6 },
+  { id: 'party6',   ic: '👥', name: 'Полный состав',    desc: 'Собери братву из 6',                test: () => G.party.length >= 6 },
   { id: 'badge1',   ic: '🏅', name: 'Претендент',       desc: 'Выиграй значок арены',               test: () => G.badges.length >= 1 },
   { id: 'badge3',   ic: '👑', name: 'Чемпион',          desc: 'Собери 3 значка арены',              test: () => G.badges.length >= 3 },
   { id: 'train10',  ic: '⚔️', name: 'Гроза тренеров',   desc: 'Победи 10 тренеров',                 test: () => G.stats.trainersBeaten >= 10 },
@@ -572,7 +572,7 @@ async function startTowerRun(tw) {
     }
     floor++;
     if (!confirm('Этаж ' + (floor - 1) + ' пройден! Подняться выше? Этаж ' + floor +
-      ' будет сильнее, а команда НЕ лечится.')) break;
+      ' будет сильнее, а братва НЕ лечится.')) break;
   }
   afterBattle(result);
 }
@@ -626,7 +626,7 @@ function healAtFountain(tx, ty) {
     }
     if (G.orbs < 10) G.orbs = 10;
     sfx('heal');
-    toast('Фонтан лечит команду, снимает недуги и восполняет ПП!');
+    toast('Фонтан лечит братву, снимает недуги и восполняет ПП!');
   }
   updateHUD();
   saveGame();
@@ -790,7 +790,7 @@ function tradeReceive(received) {
 
 function tradeMakeOffer(src, idx) {
   if (G.tradeOut) return { err: 'У тебя уже есть активное предложение — отмени его или заверши обмен.' };
-  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя предложить последнего братишку из команды.' };
+  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя предложить последнего братишку из братвы.' };
   const arr = src === 'store' ? G.storage : G.party;
   if (!arr[idx]) return { err: 'Нет такого братишки.' };
   const m = tradeEscrow(src, idx);
@@ -805,7 +805,7 @@ function tradeAcceptOffer(payload, src, giveIdx) {
   if (G.tradeIn) return { err: 'Ты уже отвечаешь на другое предложение — сначала заверши или отмени его.' };
   if (G.usedTrades.has(payload.offerId)) return { err: 'Эта сделка уже была завершена.' };
   if (G.tradeOut && G.tradeOut.offerId === payload.offerId) return { err: 'Это твоё же предложение!' };
-  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя отдать последнего братишку из команды.' };
+  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя отдать последнего братишку из братвы.' };
   const arr = src === 'store' ? G.storage : G.party;
   if (!arr[giveIdx]) return { err: 'Нет такого братишки.' };
   const m = tradeEscrow(src, giveIdx);
@@ -981,7 +981,7 @@ function friendOfferFlow() {
   if (G.tradeOut) { friendError('У тебя уже есть активное предложение.'); return; }
   const title = document.createElement('b');
   title.style.color = 'var(--ui-accent)';
-  title.textContent = 'Кого предложить другу? (📦 — из хранилища)';
+  title.textContent = 'Кого предложить другу? (📦 — из кармана)';
   main.appendChild(title);
   friendMonList(main, 'Предложить', entry => {
     const r = tradeMakeOffer(entry.src, entry.idx);
@@ -1012,7 +1012,7 @@ function friendProcessCode() {
     main.appendChild(title);
     main.appendChild(friendMonRow(payload.mon));
     const pick = document.createElement('b');
-    pick.textContent = 'Кого отдать взамен? (📦 — из хранилища)';
+    pick.textContent = 'Кого отдать взамен? (📦 — из кармана)';
     main.appendChild(pick);
     friendMonList(main, 'Отдать', entry => {
       const r = tradeAcceptOffer(payload, entry.src, entry.idx);
@@ -1037,7 +1037,7 @@ function friendProcessCode() {
       const r = tradeCompleteOffer(payload);
       if (r.err) { friendError(r.err); return; }
       sfx('catch');
-      toast('🤝 Обмен! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в хранилище (B).' : ' теперь с тобой.'));
+      toast('🤝 Обмен! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в кармане (B).' : ' теперь с тобой.'));
       renderFriendPanel();
       friendShowCode('Финальный код — ОБЯЗАТЕЛЬНО отправь другу, иначе он не получит братишку:', r.code);
     };
@@ -1049,7 +1049,7 @@ function friendProcessCode() {
   const r = tradeFinalize(payload);
   if (r.err) { friendError(r.err); return; }
   sfx('catch');
-  toast('🤝 Обмен завершён! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в хранилище (B).' : ' теперь с тобой.'));
+  toast('🤝 Обмен завершён! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в кармане (B).' : ' теперь с тобой.'));
   renderFriendPanel();
   const done = document.createElement('b');
   done.style.color = 'var(--ui-accent)';
@@ -1078,7 +1078,7 @@ function toggleStorage() {
 }
 
 function storageWithdraw(i) {
-  if (G.party.length >= 6) { toast('Команда полна!'); return false; }
+  if (G.party.length >= 6) { toast('Братва в полном составе!'); return false; }
   const m = G.storage.splice(i, 1)[0];
   if (m) G.party.push(m);
   updateHUD(); saveGame();
@@ -1107,8 +1107,8 @@ function storageRelease(i) {
 
 function renderStorage() {
   document.getElementById('storage-info').textContent =
-    G.storage.length ? 'Хранится: ' + G.storage.length + '. Отсюда можно брать в команду, для яиц и обменов.' :
-    'Пусто. Сюда попадают пойманные при полной команде — и кого сам уберёшь из команды.';
+    G.storage.length ? 'В кармане: ' + G.storage.length + '. Отсюда можно брать в братву, для яиц и обменов.' :
+    'Пусто. Сюда попадают пойманные при полной братве — и кого сам уберёшь из братвы.';
   const rows = document.getElementById('storage-rows');
   rows.innerHTML = '';
   G.storage.forEach((m, i) => {
@@ -1124,7 +1124,7 @@ function renderStorage() {
       '<div style="opacity:.75;font-size:11px">ОЗ ' + m.maxHp + ' · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd + '</div>';
     row.appendChild(info);
     const bTake = document.createElement('button');
-    bTake.textContent = 'В команду';
+    bTake.textContent = 'В братву';
     bTake.disabled = G.party.length >= 6;
     bTake.onclick = () => { storageWithdraw(i); renderStorage(); };
     row.appendChild(bTake);
@@ -1157,7 +1157,7 @@ function hatchEgg() {
   G.stats.eggsHatched++;
   sfx('catch');
   toast('🐣 Из яйца вылупился ' + (baby.shiny ? '✨' : '') + monName(baby) +
-    (dest === 'store' ? '! Он ждёт в хранилище (B).' : '!'));
+    (dest === 'store' ? '! Он ждёт в кармане (B).' : '!'));
   updateHUD();
   saveGame();
 }
@@ -1175,7 +1175,7 @@ function renderNursery(picked) {
   const mons = allMons();
   const info = document.getElementById('nursery-info');
   info.innerHTML = picked.length === 0
-    ? 'Выбери <b>первого</b> родителя (500₴ за яйцо, 📦 — из хранилища):'
+    ? 'Выбери <b>первого</b> родителя (500₴ за яйцо, 📦 — из кармана):'
     : 'Выбери <b>второго</b> родителя. Первый: <b style="color:var(--ui-accent)">' + monName(mons[picked[0]].m) + '</b>';
   const rows = document.getElementById('nursery-rows');
   rows.innerHTML = '';
@@ -2211,15 +2211,43 @@ function openMonDetail(i) {
   };
   acts.appendChild(bNick);
 
-  // кастомный спрайт: загрузка своего PNG
+  // кастомный спрайт: загрузка своего PNG (платная разблокировка за Stars)
   const bSpr = document.createElement('button');
-  bSpr.textContent = m.customSprite ? '🖼 Сменить спрайт' : '🖼 Свой спрайт';
+  bSpr.textContent = sprUnlocked
+    ? (m.customSprite ? '🖼 Сменить спрайт' : '🖼 Свой спрайт')
+    : '🔒 Свой спрайт · ' + SPRITE_PRICE + '⭐';
   bSpr.onclick = () => {
     const hint = document.getElementById('spr-hint');
     if (hint) { hint.remove(); return; }
     const box = document.createElement('div');
     box.id = 'spr-hint';
     box.style.cssText = 'width:100%;background:var(--ui-panel);border:2px solid var(--ui-border);border-radius:6px;padding:10px;font-size:12px;line-height:1.5;display:flex;flex-direction:column;gap:8px;';
+    if (!sprUnlocked) {
+      // витрина покупки
+      box.innerHTML = '<b style="color:var(--ui-accent)">🖼 Свои спрайты братвы</b>' +
+        '<br>Загружай собственные PNG-облики для любых своих братишек — навсегда, на все устройства с этим сейвом.';
+      const buyRow = document.createElement('div');
+      buyRow.style.cssText = 'display:flex;gap:8px;justify-content:center;flex-wrap:wrap;';
+      if (IS_TMA) {
+        const buyBtn = document.createElement('button');
+        buyBtn.textContent = '⭐ Купить за ' + SPRITE_PRICE + ' Stars';
+        buyBtn.onclick = () => netBuySpriteUnlock(() => {
+          toast('🖼 Загрузка своих спрайтов открыта!');
+          openMonDetail(i);
+        });
+        buyRow.appendChild(buyBtn);
+      } else {
+        const note = document.createElement('div');
+        note.style.cssText = 'opacity:.8;';
+        note.textContent = 'Покупка доступна в Telegram: открой игру через @poketmons_bot.';
+        buyRow.appendChild(note);
+      }
+      box.appendChild(buyRow);
+      acts.parentNode.insertBefore(box, acts.nextSibling);
+      // проверим — вдруг уже куплено на другом устройстве
+      netCheckUnlock(ok => { if (ok) { toast('🖼 Спрайты уже открыты!'); openMonDetail(i); } });
+      return;
+    }
     box.innerHTML = 'Лучше всего выглядит <b>пиксель-арт 24×24</b>: PNG с прозрачным фоном, персонаж <b>смотрит влево</b>.' +
       '<br><span style="opacity:.7">Другие картинки тоже можно — мы обрежем по краям и пикселизуем до 24×24.</span>';
     const row = document.createElement('div');
@@ -2369,7 +2397,7 @@ function openMonDetail(i) {
 
   if (G.party.length > 1) {
     const bBox = document.createElement('button');
-    bBox.textContent = '📦 В хранилище';
+    bBox.textContent = '📦 В карман';
     bBox.onclick = () => {
       storageDeposit(i);
       closeMonDetail();
@@ -2568,6 +2596,7 @@ function main() {
   initTouch();
   updateHUD();
   netFetchRival();   // предзагрузка «живого» соперника
+  netCheckUnlock();  // куплена ли загрузка спрайтов (кэшируется локально)
 
   // PWA: офлайн-кэш (только по http/https — с file:// SW не работает)
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
