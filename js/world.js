@@ -20,6 +20,33 @@ const ENCOUNTER_CHANCE = {
 // на каких тайлах живёт "дикая природа" (гнёзда, святилища, предметы)
 const WILD_TILES = new Set([T.GRASS, T.TALL, T.FLOOR, T.SNOW, T.SNOWTALL, T.DESERT, T.DESERTTALL]);
 
+// ===== Города как сущности =====
+// Мир делится на ячейки CITY_CELL×CITY_CELL; в каждой — точка-центр (Вороной).
+// Городское «пятно» принадлежит ближайшему центру: у него имя, одна арена,
+// а между соседними центрами через глушь идут дороги.
+
+const CITY_CELL = 96;
+
+const CITY_PRE = ['Ново', 'Старо', 'Верхне', 'Нижне', 'Бело', 'Черно', 'Красно',
+  'Зелено', 'Тихо', 'Громо', 'Звездо', 'Мохо', 'Ясно', 'Дально', 'Крипто', 'Монстро'];
+const CITY_ROOT = ['горск', 'реченск', 'полье', 'лесск', 'озёрск', 'камск', 'травинск',
+  'цветовск', 'холмск', 'бережск', 'градск', 'варинск', 'мшинск', 'клыковск'];
+
+function cityName(u) {
+  const rng = mulberry32(u >>> 0);
+  return pick(rng, CITY_PRE) + pick(rng, CITY_ROOT);
+}
+
+// расстояние от точки до отрезка
+function distToSeg(px, py, ax, ay, bx, by) {
+  const dx = bx - ax, dy = by - ay;
+  const len2 = dx * dx + dy * dy || 1;
+  let t = ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  const qx = ax + dx * t, qy = ay + dy * t;
+  return Math.hypot(px - qx, py - qy);
+}
+
 const World = {
   seed: 0,
   _tiles: new Map(),
@@ -27,6 +54,85 @@ const World = {
   init(seed) {
     this.seed = seed >>> 0;
     this._tiles.clear();
+    this._centers = new Map();
+  },
+
+  // Центр города ячейки Вороного (кэшируется — зовётся на каждый тайл)
+  cityCenter(cellX, cellY) {
+    const key = cellX + ',' + cellY;
+    let c = this._centers && this._centers.get(key);
+    if (c) return c;
+    const hx = hash2u(cellX, cellY, this.seed ^ 0xC171);
+    const hy = hash2u(cellX, cellY, this.seed ^ 0xC172);
+    c = {
+      // центр выровнен на середину квартала 12×12 — арена ложится ровно
+      x: (Math.floor((cellX * CITY_CELL + 18 + hx % (CITY_CELL - 36)) / 12)) * 12 + 6,
+      y: (Math.floor((cellY * CITY_CELL + 18 + hy % (CITY_CELL - 36)) / 12)) * 12 + 6,
+      r: 16 + hx % 6,   // радиус городка: 16-21 тайл (≈3×3 квартала)
+    };
+    // центр в воде/на пляже — город не вырос (ячейка без города)
+    c.dead = fbm(c.x, c.y, 55, this.seed ^ 0xA1A1, 3) < 0.37;
+    if (!this._centers) this._centers = new Map();
+    this._centers.set(key, c);
+    return c;
+  },
+
+  // Ближайший центр города к точке (по 3×3 соседним ячейкам)
+  nearestCityCenter(x, y) {
+    const cellX = Math.floor(x / CITY_CELL), cellY = Math.floor(y / CITY_CELL);
+    let best = null, bd = Infinity;
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const c = this.cityCenter(cellX + dx, cellY + dy);
+        const d = (c.x - x) * (c.x - x) + (c.y - y) * (c.y - y);
+        if (d < bd) { bd = d; best = c; }
+      }
+    }
+    if (!best.id) {
+      best.id = 'C' + best.x + ',' + best.y;
+      best.name = cityName(hash2u(best.x, best.y, this.seed ^ 0xC173));
+    }
+    return best;
+  },
+
+  // Информация о городе, если точка внутри городского круга (иначе null)
+  cityInfoAt(x, y) {
+    const c = this.nearestCityCenter(x, y);
+    if (c.dead) return null;
+    const d2 = (c.x - x) * (c.x - x) + (c.y - y) * (c.y - y);
+    return d2 <= c.r * c.r ? c : null;
+  },
+
+  // Роль квартала 12×12 в городке: ровно по одной постройке каждого типа
+  // вокруг центрального квартала с ареной; в остальных — дома и скверы.
+  _blockRole(bx, by, city) {
+    const dx = bx - Math.floor(city.x / 12);
+    const dy = by - Math.floor(city.y / 12);
+    if (dx === 0 && dy === 0) return 'arena';
+    if (dx === -1 && dy === 0) return 'fountain';
+    if (dx === 1 && dy === 0) return 'shop';
+    if (dx === 0 && dy === -1) return 'tower';
+    if (dx === 0 && dy === 1) return 'nursery';
+    // остальное: изредка сквер с доской заданий, чаще дома
+    const bh = hash2(bx, by, this.seed ^ 0xD4D4);
+    if (bh < 0.22) return 'park';
+    return 'houses';
+  },
+
+  // Межгородская дорога: точка близка к отрезку между соседними живыми центрами
+  _onHighway(x, y) {
+    const cellX = Math.floor(x / CITY_CELL), cellY = Math.floor(y / CITY_CELL);
+    for (let dy = -1; dy <= 1; dy++) {
+      for (let dx = -1; dx <= 1; dx++) {
+        const a = this.cityCenter(cellX + dx, cellY + dy);
+        if (a.dead) continue;
+        const right = this.cityCenter(cellX + dx + 1, cellY + dy);
+        const down = this.cityCenter(cellX + dx, cellY + dy + 1);
+        if (!right.dead && distToSeg(x, y, a.x, a.y, right.x, right.y) < 1.3) return true;
+        if (!down.dead && distToSeg(x, y, a.x, a.y, down.x, down.y) < 1.3) return true;
+      }
+    }
+    return false;
   },
 
   tileAt(x, y) {
@@ -68,40 +174,41 @@ const World = {
     const c = fbm(x, y, 95, s ^ 0xC3C3, 2);   // урбанизация
 
     if (e < 0.34) return T.WATER;
-    if (e < 0.37) return T.SAND;
 
-    // --- город: сетка дорог, кварталы с домами, изредка фонтан ---
-    if (c > 0.60) {
+    // --- компактный городок вокруг центра Вороного ---
+    const city = this.cityInfoAt(x, y);
+    if (city) {
       const xm = ((x % 12) + 12) % 12;
       const ym = ((y % 12) + 12) % 12;
       if (xm <= 1 || ym <= 1) return T.ROAD;
       const bx = Math.floor(x / 12), by = Math.floor(y / 12);
-      const bh = hash2(bx, by, s ^ 0xD4D4);
-      if (bh < 0.10) {
-        // сквер с фонтаном и доской заданий
+      const role = this._blockRole(bx, by, city);
+      if (role === 'arena') {
+        if (xm >= 3 && xm <= 9 && ym >= 3 && ym <= 9) return T.ARENA;
+        return T.PAVE;
+      }
+      if (role === 'fountain') {
+        // сквер с фонтаном и главной доской заданий
         if (xm >= 6 && xm <= 7 && ym >= 6 && ym <= 7) return T.FOUNTAIN;
         if (xm === 3 && ym === 3) return T.BOARD;
         return T.PARK;
       }
-      if (bh < 0.16) {
-        // арена: боевая площадка с мастером в центре
-        if (xm >= 3 && xm <= 9 && ym >= 3 && ym <= 9) return T.ARENA;
-        return T.PAVE;
-      }
-      if (bh < 0.24) {
-        // лавка: киоск посреди квартала
+      if (role === 'shop') {
         if (xm >= 5 && xm <= 7 && ym >= 5 && ym <= 6) return T.SHOP;
         return T.PAVE;
       }
-      if (bh < 0.28) {
-        // башня испытаний
+      if (role === 'tower') {
         if (xm >= 5 && xm <= 7 && ym >= 4 && ym <= 7) return T.TOWER;
         return T.PAVE;
       }
-      if (bh < 0.31) {
-        // питомник
+      if (role === 'nursery') {
         if (xm >= 5 && xm <= 7 && ym >= 5 && ym <= 6) return T.NURSERY;
         return T.PAVE;
+      }
+      if (role === 'park') {
+        // сквер, иногда с дополнительной доской заданий
+        if (xm === 6 && ym === 6 && hash2(bx, by, s ^ 0xB0A2) < 0.5) return T.BOARD;
+        return T.PARK;
       }
       const inQx = (xm >= 3 && xm <= 5) ? 0 : (xm >= 7 && xm <= 9) ? 1 : -1;
       const inQy = (ym >= 3 && ym <= 5) ? 0 : (ym >= 7 && ym <= 9) ? 1 : -1;
@@ -111,6 +218,11 @@ const World = {
       }
       return T.PAVE;
     }
+
+    // --- межгородская дорога: тракт между соседними центрами городов ---
+    if (this._onHighway(x, y)) return T.ROAD;
+
+    if (e < 0.37) return T.SAND;
 
     // --- парк: клумбы, редкие деревья ---
     if (c > 0.54) {
@@ -338,11 +450,12 @@ const World = {
     const bx = Math.floor(x / 12), by = Math.floor(y / 12);
     const u = hash2u(bx, by, this.seed ^ 0xAAAA);
     const lvl = clamp(this.levelAt(x, y) + 4, 6, 60);
+    const city = this.nearestCityCenter(x, y);
     return {
       x, y,
       id: 'A' + bx + ',' + by,
       seed: u,
-      name: 'Мастер арены ' + TRAINER_NAMES[u % TRAINER_NAMES.length],
+      name: 'Лидер города ' + city.name + ' — ' + TRAINER_NAMES[u % TRAINER_NAMES.length],
       level: lvl,
       isMaster: true,
     };

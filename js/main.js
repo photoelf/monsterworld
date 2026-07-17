@@ -37,6 +37,7 @@ const G = {
   weather: 'clear',      // clear | rain
   follower: null,        // спутник: {x, y, moving, bounceT}
   lastTileKey: '',
+  lastCityId: null,      // город, в котором стоим (для приветствия при входе)
   graceSteps: 0,         // шаги без встреч после боя
   bumpCooldown: 0,
 };
@@ -187,7 +188,8 @@ function updateHUD() {
     '<span style="opacity:.7">📕 ' + G.dex.caught.size + '/' + G.dex.seen.size +
     (G.egg ? ' · 🥚 ' + G.egg.steps : '') +
     (G.quest ? ' · 📋 ' + G.quest.progress + '/' + G.quest.need : '') +
-    ' · x:' + px + ' y:' + py + ' · ур. диких ~' + World.levelAt(px, py) + '</span>';
+    ' · x:' + px + ' y:' + py + ' · ур. диких ~' + World.levelAt(px, py) +
+    (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() + '</span>';
   const p = document.getElementById('hud-party');
   p.innerHTML = G.party.map(m => {
     const pct = Math.max(0, m.hp / m.maxHp * 100);
@@ -608,6 +610,13 @@ function healAtFountain(tx, ty) {
 
 function onTileEnter(tx, ty) {
   G.stats.maxDist = Math.max(G.stats.maxDist, Math.max(Math.abs(tx), Math.abs(ty)));
+  // вход в город — приветствие
+  const city = World.cityInfoAt(tx, ty);
+  const cityId = city ? city.id : null;
+  if (cityId !== G.lastCityId) {
+    G.lastCityId = cityId;
+    if (city) toast('🏙️ Добро пожаловать: ' + city.name + '!');
+  }
   // климат для ачивки
   const tile0 = World.tileAt(tx, ty);
   if ((tile0 === T.SNOW || tile0 === T.SNOWTALL) && !G.stats.sawSnow) {
@@ -1672,6 +1681,24 @@ function drawMiniMap(cv, tw, th, centerX, centerY) {
     c.fillStyle = '#4fc3ff';
     c.fillRect(mx - 3, my - 3, 6, 6);
   }
+  // подписи городов, чьи центры попали на карту
+  c.font = 'bold 11px "Courier New", monospace';
+  c.textAlign = 'center';
+  const cell0x = Math.floor(x0 / CITY_CELL), cell0y = Math.floor(y0 / CITY_CELL);
+  for (let cy = cell0y - 1; cy <= Math.floor((y0 + th) / CITY_CELL) + 1; cy++) {
+    for (let cx = cell0x - 1; cx <= Math.floor((x0 + tw) / CITY_CELL) + 1; cx++) {
+      const ct = World.cityCenter(cx, cy);
+      const info = World.cityInfoAt(ct.x, ct.y);
+      if (!info || info.x !== ct.x || info.y !== ct.y) continue; // центр не в городе — город тут не вырос
+      const mx = (ct.x - x0) * MAP_PX, my = (ct.y - y0) * MAP_PX;
+      if (mx < 20 || my < 8 || mx > cv.width - 20 || my > cv.height - 4) continue;
+      c.fillStyle = 'rgba(0,0,0,0.65)';
+      c.fillRect(mx - c.measureText(info.name).width / 2 - 3, my - 14, c.measureText(info.name).width + 6, 13);
+      c.fillStyle = '#ffd75e';
+      c.fillText(info.name, mx, my - 4);
+    }
+  }
+
   // центр — крестик
   const ccx = tw / 2 * MAP_PX, ccy = th / 2 * MAP_PX;
   c.fillStyle = '#ffffff';
