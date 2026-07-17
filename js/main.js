@@ -233,6 +233,7 @@ function reviveOwnedMon(md) {
 
 function buildSaveData() {
   return {
+    ts: Date.now(),   // для выбора свежего между локальным и облачным сейвом
     seed: G.seed,
     x: G.player.x, y: G.player.y,
     spawn: G.spawn,
@@ -268,6 +269,7 @@ function buildSaveData() {
 function saveGame() {
   if (G.state === 'title' || G.state === 'starter') return;
   try { localStorage.setItem(SAVE_KEY, JSON.stringify(buildSaveData())); } catch (e) {}
+  cloudSaveSoon(); // в Telegram — отложенная заливка в CloudStorage
 }
 
 // Код сейва: JSON -> base64 (безопасно для юникода)

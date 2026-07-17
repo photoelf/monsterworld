@@ -356,6 +356,7 @@
   <!-- Титульный экран -->
   <div id="title" class="overlay">
     <h1>МИР МОНСТРИКОВ</h1>
+    <div id="title-nick" style="opacity:.85;color:var(--ui-accent);"></div>
     <p>Бесконечный процедурный мир: поля, леса, парки и города. Лови странных монстриков
        со случайными умениями, прокачивай, эволюционируй и сражайся с другими тренерами.</p>
     <input type="text" id="seed-input" placeholder="сид мира (пусто = случайный)">
@@ -368,6 +369,14 @@
       <button id="btn-import">Импорт</button>
     </div>
     <div id="import-error" style="color:#e05050; font-size:13px;"></div>
+  </div>
+
+  <!-- Регистрация (Telegram): выбор ника -->
+  <div id="reg-panel" class="overlay hidden" style="z-index: 70;">
+    <h1 style="font-size:22px;">Как тебя звать?</h1>
+    <p>Под этим именем тебя будут знать в Карманной Братве.</p>
+    <input type="text" id="reg-nick" maxlength="20">
+    <button id="btn-reg-ok">Погнали!</button>
   </div>
 
   <!-- Выбор стартера -->
