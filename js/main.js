@@ -468,9 +468,24 @@ function collides(x, y) {
 async function startTrainerBattle(tr) {
   if (G.state !== 'world') return;
   G.state = 'battle';
-  const team = World.trainerTeam(tr);
+  let team = World.trainerTeam(tr);
+  let name = tr.name;
+  // «живой» соперник: реальная команда другого игрока (уровни подогнаны под местность)
+  const rival = Math.random() < 0.4 ? netTakeRival() : null;
+  if (rival) {
+    const safeNick = String(rival.nick || '').replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 20) || 'Тренер';
+    name = 'Тренер Братвы ' + safeNick;
+    const revived = rival.team.slice(0, 6).map(md => {
+      const m = tradeMonRevive(md);
+      const lvl = clamp(m.level, Math.max(2, tr.level - 2), tr.level + 3);
+      if (lvl !== m.level) { m.level = lvl; recalcStats(m); m.hp = m.maxHp; }
+      m.moves.forEach(mv => { mv.pp = mv.maxPp; });
+      return m;
+    }).filter(Boolean);
+    if (revived.length) team = revived;
+  }
   const result = await Battle.run({
-    kind: 'trainer', enemyParty: team, trainerName: tr.name,
+    kind: 'trainer', enemyParty: team, trainerName: name,
     reward: 30 + tr.level * 12,
   });
   if (result === 'win') { G.defeated.add(tr.id); G.stats.trainersBeaten++; questProgress('trainer'); }
@@ -584,6 +599,8 @@ function afterBattle(result) {
   G.state = 'world';
   updateHUD();
   saveGame();
+  netUploadTeam();   // актуальный состав — в общий пул соперников
+  netFetchRival();   // и заранее тянем следующего «живого» тренера
 }
 
 function healAtFountain(tx, ty) {
@@ -2424,6 +2441,7 @@ function main() {
   initTitle();
   initTouch();
   updateHUD();
+  netFetchRival();   // предзагрузка «живого» соперника
 
   // PWA: офлайн-кэш (только по http/https — с file:// SW не работает)
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

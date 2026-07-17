@@ -1,0 +1,8 @@
+name = "monsterworld-api"
+main = "worker.js"
+compatibility_date = "2026-07-01"
+
+# после `wrangler kv namespace create SNAPS` вставь сюда выданный id
+[[kv_namespaces]]
+binding = "SNAPS"
+id = "REPLACE_WITH_KV_ID"
