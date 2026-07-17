@@ -2379,6 +2379,7 @@ function initTouch() {
 function main() {
   canvas = document.getElementById('game');
   ctx = canvas.getContext('2d');
+  initTelegram();
   if (IS_MOBILE) {
     document.body.classList.add('mobile');
     resizeCanvas();
