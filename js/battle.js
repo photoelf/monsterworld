@@ -340,16 +340,28 @@ const Battle = {
           if (party.length < 6) {
             party.push(em);
           } else {
-            this.note('Команда полна. Кого заменить? (Esc — отпустить пойманного)');
-            const ri = await this.menu(party.map(m => ({
-              label: monName(m) + ' (Ур.' + m.level + ')',
-              small: m.hp + '/' + m.maxHp + ' ОЗ',
-            })), true);
-            if (ri >= 0) {
-              await this.say(monName(party[ri]) + ' отпущен на волю. Удачи, дружок!');
-              party[ri] = em;
+            this.note('Команда полна! Куда отправить ' + monName(em) + '?');
+            const choice = await this.menu([
+              { label: '📦 В Монстрохранилище', small: 'хранится: ' + G.storage.length },
+              { label: 'Взять в команду', small: 'заменяемый уйдёт в хранилище' },
+            ]);
+            if (choice === 0) {
+              G.storage.push(em);
+              await this.say(monName(em) + ' отправлен в Монстрохранилище (B).');
             } else {
-              await this.say(monName(em) + ' отпущен на волю.');
+              this.note('Кто уступит место? (Esc — нового в хранилище)');
+              const ri = await this.menu(party.map(m => ({
+                label: monName(m) + ' (Ур.' + m.level + ')',
+                small: m.hp + '/' + m.maxHp + ' ОЗ',
+              })), true);
+              if (ri >= 0) {
+                G.storage.push(party[ri]);
+                await this.say(monName(party[ri]) + ' отправляется в хранилище, ' + monName(em) + ' — в команду!');
+                party[ri] = em;
+              } else {
+                G.storage.push(em);
+                await this.say(monName(em) + ' отправлен в Монстрохранилище (B).');
+              }
             }
           }
           result = 'caught';

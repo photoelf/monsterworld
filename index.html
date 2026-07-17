@@ -2,6 +2,10 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="theme-color" content="#1a1a24">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/icon-192.png">
 <title>Мир Монстриков</title>
 <style>
   :root {
@@ -172,6 +176,32 @@
   .arow.locked { opacity: .45; }
   .arow .ic { font-size: 20px; }
   .arow .nm { color: var(--ui-accent); font-weight: bold; }
+  /* ---------- Тач-управление ---------- */
+  #touch-ui { position: fixed; inset: 0; pointer-events: none; z-index: 60; }
+  .tbtn {
+    pointer-events: auto; user-select: none; -webkit-user-select: none; touch-action: none;
+    background: rgba(38,38,54,.72); border: 2px solid var(--ui-border); border-radius: 10px;
+    display: flex; align-items: center; justify-content: center;
+    font-size: 22px; color: var(--ui-text);
+  }
+  .tbtn.on, .tbtn:active { background: rgba(255,215,94,.35); border-color: var(--ui-accent); }
+  #dpad {
+    position: absolute; left: 10px; bottom: 10px;
+    display: grid; grid-template-columns: repeat(3, 54px); grid-template-rows: repeat(3, 54px); gap: 4px;
+  }
+  #touch-actions { position: absolute; right: 12px; bottom: 22px; display: flex; flex-direction: column; gap: 12px; }
+  #touch-actions .tbtn { width: 58px; height: 58px; border-radius: 50%; }
+  #touch-menu { position: absolute; top: 4px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px; }
+  #touch-menu .tbtn { width: 44px; height: 34px; font-size: 17px; }
+  /* ---------- Мобильная адаптация ---------- */
+  @media (max-width: 720px) {
+    .prow, .srow, .arow { width: 94vw; }
+    #starters { flex-wrap: wrap; }
+    #export-code, #friend-code-in { width: 92vw !important; }
+    input[type=text] { max-width: 88vw; }
+    h1 { font-size: 22px; }
+    #hint { display: none; }
+  }
   .stat-tag {
     display: inline-block; font-size: 10px; padding: 0 4px; border-radius: 3px;
     background: #803a8f; color: #fff; margin-left: 4px; vertical-align: middle;
@@ -187,7 +217,7 @@
     <div class="hud-box" id="hud-party"></div>
   </div>
   <div id="toast"></div>
-  <div id="hint">WASD · Shift — бег · Tab — команда · M — карта · P — педия · O — награды · T — обмен</div>
+  <div id="hint">WASD · Shift — бег · Tab — команда · B — хранилище · M — карта · P — педия · O — награды · T — обмен/PvP</div>
 
   <!-- Титульный экран -->
   <div id="title" class="overlay">
@@ -297,6 +327,7 @@
     <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
       <button id="btn-friend-process">Обработать код</button>
       <button id="btn-friend-offer">Создать предложение</button>
+      <button id="btn-friend-pvp">⚔️ Вызов на бой</button>
       <button id="btn-friend-close">Закрыть (T)</button>
     </div>
     <div id="friend-error" style="color:#e05050;font-size:13px;max-width:600px;"></div>
@@ -329,8 +360,39 @@
   <!-- Команда -->
   <div id="party-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Команда</h1>
-    <div id="party-rows"></div>
-    <button id="btn-party-close">Закрыть (Tab)</button>
+    <div id="party-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px;"></div>
+    <div style="display:flex;gap:10px;">
+      <button id="btn-storage-open">📦 Монстрохранилище</button>
+      <button id="btn-party-close">Закрыть (Tab)</button>
+    </div>
+  </div>
+
+  <!-- Монстрохранилище -->
+  <div id="storage-panel" class="overlay hidden">
+    <h1 style="font-size:20px;">📦 Монстрохранилище</h1>
+    <div id="storage-info" style="opacity:.85;"></div>
+    <div id="storage-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px;"></div>
+    <button id="btn-storage-close">Закрыть (B)</button>
+  </div>
+
+  <!-- Тач-управление -->
+  <div id="touch-ui" class="hidden">
+    <div id="touch-menu">
+      <div class="tbtn" data-panel="party">👥</div>
+      <div class="tbtn" data-panel="map">🗺️</div>
+      <div class="tbtn" data-panel="dex">📕</div>
+      <div class="tbtn" data-panel="ach">🏆</div>
+      <div class="tbtn" data-panel="friend">🤝</div>
+    </div>
+    <div id="dpad">
+      <div></div><div class="tbtn" data-k="ArrowUp">▲</div><div></div>
+      <div class="tbtn" data-k="ArrowLeft">◀</div><div></div><div class="tbtn" data-k="ArrowRight">▶</div>
+      <div></div><div class="tbtn" data-k="ArrowDown">▼</div><div></div>
+    </div>
+    <div id="touch-actions">
+      <div class="tbtn" id="t-run">🏃</div>
+      <div class="tbtn" id="t-fish">🎣</div>
+    </div>
   </div>
 </div>
 
@@ -339,5 +401,6 @@
 <script src="js/world.js"></script>
 <script src="js/battle.js"></script>
 <script src="js/main.js"></script>
+<script src="js/pvp.js"></script>
 </body>
 </html>

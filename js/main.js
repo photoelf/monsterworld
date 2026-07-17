@@ -17,7 +17,9 @@ const G = {
   quest: null,           // активное задание с доски
   tradeOut: null,        // моё предложение другу: {offerId, mon} (монстрик в эскроу)
   tradeIn: null,         // мой ответ на чужое предложение: {offerId, mon, expectHash, expectMon}
-  usedTrades: new Set(), // завершённые сделки (offerId)
+  usedTrades: new Set(), // завершённые сделки и PvP-бои (id)
+  storage: [],           // Монстрохранилище — монстрики вне команды
+  pvpOut: null,          // мой PvP-вызов: {pvpId, nonce, team}
   badges: [],            // id побеждённых арен
   dex: { seen: new Set(), caught: new Set(), shiny: new Set() },  // сиды видов
   fountains: [],         // посещённые фонтаны: {id, x, y} — точки телепорта
@@ -29,7 +31,7 @@ const G = {
   achievements: new Set(),
   stats: { trainersBeaten: 0, evolutions: 0, nests: 0, trades: 0, maxDist: 0,
            surfed: 0, fished: 0, towerBest: 0, legends: 0, taught: 0,
-           eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0 },
+           eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0 },
   clock: 0,              // игровое время, сек
   phase: 'day',          // day | evening | night | morning
   weather: 'clear',      // clear | rain
@@ -77,6 +79,8 @@ const ACHIEVEMENTS = [
   { id: 'charm1',   ic: '🧿', name: 'Талисман',         desc: 'Надень амулет на монстрика',          test: () => G.party.some(m => m.charm) },
   { id: 'climate',  ic: '🌍', name: 'Климатолог',       desc: 'Побывай в снегах и в пустыне',        test: () => G.stats.sawSnow >= 1 && G.stats.sawDesert >= 1 },
   { id: 'ptrade1',  ic: '🤝', name: 'Настоящий друг',   desc: 'Обменяйся монстриком с другим игроком', test: () => G.stats.friendTrades >= 1 },
+  { id: 'pvp1',     ic: '⚔️', name: 'Дуэлянт',          desc: 'Сыграй PvP-бой с другом',              test: () => G.stats.pvpBattles >= 1 },
+  { id: 'pvpwin',   ic: '🥇', name: 'Гладиатор',        desc: 'Выиграй PvP-бой',                      test: () => G.stats.pvpWins >= 1 },
 ];
 
 // Прогресс активного задания с доски
@@ -202,6 +206,29 @@ function toast(text) {
 
 // ===== Сохранение =====
 
+function dumpOwnedMon(m) {
+  return {
+    speciesSeed: m.speciesSeed, stage: m.stage, level: m.level,
+    exp: m.exp, hp: m.hp, moves: m.moves, status: m.status || null,
+    shiny: !!m.shiny, nick: m.nick || null, charm: m.charm || null,
+  };
+}
+
+function reviveOwnedMon(md) {
+  const m = {
+    speciesSeed: md.speciesSeed >>> 0, stage: md.stage, level: md.level,
+    exp: md.exp, hp: md.hp, moves: md.moves, status: md.status || null,
+    shiny: !!md.shiny, nick: md.nick || null, charm: md.charm || null,
+  };
+  for (const mv of m.moves) {
+    if (mv.maxPp === undefined) { mv.maxPp = ppForPower(mv.power); mv.pp = mv.maxPp; }
+    if (mv.pp === undefined) mv.pp = mv.maxPp;
+  }
+  recalcStats(m);
+  m.hp = Math.min(md.hp, m.maxHp);
+  return m;
+}
+
 function buildSaveData() {
   return {
     seed: G.seed,
@@ -226,13 +253,11 @@ function buildSaveData() {
     tradeOut: G.tradeOut,
     tradeIn: G.tradeIn,
     usedTrades: [...G.usedTrades],
+    storage: G.storage.map(dumpOwnedMon),
+    pvpOut: G.pvpOut,
     stats: G.stats,
     clock: Math.floor(G.clock),
-    party: G.party.map(m => ({
-      speciesSeed: m.speciesSeed, stage: m.stage, level: m.level,
-      exp: m.exp, hp: m.hp, moves: m.moves, status: m.status || null,
-      shiny: !!m.shiny, nick: m.nick || null, charm: m.charm || null,
-    })),
+    party: G.party.map(dumpOwnedMon),
     defeated: [...G.defeated],
     picked: [...G.picked],
   };
@@ -278,6 +303,8 @@ function loadGame() {
   G.tradeOut = data.tradeOut || null;
   G.tradeIn = data.tradeIn || null;
   G.usedTrades = new Set(data.usedTrades || []);
+  G.storage = (data.storage || []).map(reviveOwnedMon);
+  G.pvpOut = data.pvpOut || null;
   G.badges = data.badges || [];
   G.dex = {
     seen: new Set(data.dexSeen || []),
@@ -291,23 +318,9 @@ function loadGame() {
   G.achievements = new Set(data.achievements || []);
   G.stats = Object.assign({ trainersBeaten: 0, evolutions: 0, nests: 0, trades: 0, maxDist: 0,
                             surfed: 0, fished: 0, towerBest: 0, legends: 0, taught: 0,
-                            eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0 }, data.stats || {});
+                            eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0 }, data.stats || {});
   G.clock = data.clock || 0;
-  G.party = data.party.map(md => {
-    const m = {
-      speciesSeed: md.speciesSeed >>> 0, stage: md.stage, level: md.level,
-      exp: md.exp, hp: md.hp, moves: md.moves, status: md.status || null,
-      shiny: !!md.shiny, nick: md.nick || null, charm: md.charm || null,
-    };
-    // старые сейвы: у умений не было ПП
-    for (const mv of m.moves) {
-      if (mv.maxPp === undefined) { mv.maxPp = ppForPower(mv.power); mv.pp = mv.maxPp; }
-      if (mv.pp === undefined) mv.pp = mv.maxPp;
-    }
-    recalcStats(m);
-    m.hp = Math.min(md.hp, m.maxHp);
-    return m;
-  });
+  G.party = data.party.map(reviveOwnedMon);
   G.defeated = new Set(data.defeated || []);
   G.picked = new Set(data.picked || []);
   resetFollower();
@@ -344,6 +357,8 @@ function newWorld(seedText) {
   G.tradeOut = null;
   G.tradeIn = null;
   G.usedTrades = new Set();
+  G.storage = [];
+  G.pvpOut = null;
   G.badges = [];
   G.dex = { seen: new Set(), caught: new Set(), shiny: new Set() };
   G.fountains = [];
@@ -353,7 +368,7 @@ function newWorld(seedText) {
   G.achievements = new Set();
   G.stats = { trainersBeaten: 0, evolutions: 0, nests: 0, trades: 0, maxDist: 0,
               surfed: 0, fished: 0, towerBest: 0, legends: 0, taught: 0,
-              eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0 };
+              eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0 };
   G.clock = 0;
   G.defeated = new Set();
   G.picked = new Set();
@@ -599,7 +614,7 @@ function onTileEnter(tx, ty) {
       G.egg.steps--;
       if (G.egg.steps === 0) toast('🥚 Яйцо вот-вот вылупится!');
     }
-    if (G.egg.steps <= 0 && G.party.length < 6) hatchEgg();
+    if (G.egg.steps <= 0) hatchEgg();
   }
   // предмет
   const ik = tx + ',' + ty;
@@ -664,7 +679,12 @@ function tradeDecode(code) {
   if (tradeChecksum(json) !== parts[2]) return null;
   try {
     const p = JSON.parse(json);
-    return (p && p.offerId && p.mon && ['offer', 'accept', 'final'].includes(p.kind)) ? p : null;
+    if (!p || !p.kind) return null;
+    if (['offer', 'accept', 'final'].includes(p.kind)) return (p.offerId && p.mon) ? p : null;
+    if (['pvpc', 'pvpr'].includes(p.kind)) {
+      return (p.pvpId && p.nonce && Array.isArray(p.team) && p.team.length >= 1 && p.team.length <= 6) ? p : null;
+    }
+    return null;
   } catch (e) { return null; }
 }
 
@@ -707,19 +727,28 @@ function tradeMonRevive(md) {
 
 function tradeMonHash(md) { return tradeChecksum(JSON.stringify(md)); }
 
-// Эскроу: изъять монстрика из команды (амулет возвращается в сумку)
-function tradeEscrow(idx) {
-  const m = G.party[idx];
+// Эскроу: изъять монстрика из команды или хранилища (амулет возвращается в сумку)
+function tradeEscrow(src, idx) {
+  const arr = src === 'store' ? G.storage : G.party;
+  const m = arr[idx];
   if (m.charm) { G.charms[m.charm]++; m.charm = null; recalcStats(m); }
-  G.party.splice(idx, 1);
+  arr.splice(idx, 1);
   return m;
 }
 
-function tradeMakeOffer(idx) {
+// Полученный монстрик идёт в команду, при полной — в хранилище
+function tradeReceive(received) {
+  if (G.party.length < 6) { G.party.push(received); return 'party'; }
+  G.storage.push(received);
+  return 'store';
+}
+
+function tradeMakeOffer(src, idx) {
   if (G.tradeOut) return { err: 'У тебя уже есть активное предложение — отмени его или заверши обмен.' };
-  if (G.party.length < 2) return { err: 'Нельзя предложить последнего монстрика.' };
-  if (!G.party[idx]) return { err: 'Нет такого монстрика.' };
-  const m = tradeEscrow(idx);
+  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя предложить последнего монстрика из команды.' };
+  const arr = src === 'store' ? G.storage : G.party;
+  if (!arr[idx]) return { err: 'Нет такого монстрика.' };
+  const m = tradeEscrow(src, idx);
   const offerId = (hash2u((Math.random() * 1e9) | 0, (Math.random() * 1e9) | 0, Date.now() & 0xffffffff) >>> 0).toString(16);
   const dump = tradeMonDump(m);
   G.tradeOut = { offerId, mon: dump };
@@ -727,13 +756,14 @@ function tradeMakeOffer(idx) {
   return { code: tradeEncode({ v: 1, kind: 'offer', offerId, mon: dump }) };
 }
 
-function tradeAcceptOffer(payload, giveIdx) {
+function tradeAcceptOffer(payload, src, giveIdx) {
   if (G.tradeIn) return { err: 'Ты уже отвечаешь на другое предложение — сначала заверши или отмени его.' };
   if (G.usedTrades.has(payload.offerId)) return { err: 'Эта сделка уже была завершена.' };
   if (G.tradeOut && G.tradeOut.offerId === payload.offerId) return { err: 'Это твоё же предложение!' };
-  if (G.party.length < 2) return { err: 'Нельзя отдать последнего монстрика.' };
-  if (!G.party[giveIdx]) return { err: 'Нет такого монстрика.' };
-  const m = tradeEscrow(giveIdx);
+  if (src === 'party' && G.party.length < 2) return { err: 'Нельзя отдать последнего монстрика из команды.' };
+  const arr = src === 'store' ? G.storage : G.party;
+  if (!arr[giveIdx]) return { err: 'Нет такого монстрика.' };
+  const m = tradeEscrow(src, giveIdx);
   const dump = tradeMonDump(m);
   G.tradeIn = {
     offerId: payload.offerId,
@@ -747,9 +777,8 @@ function tradeAcceptOffer(payload, giveIdx) {
 
 function tradeCompleteOffer(payload) {
   if (!G.tradeOut || G.tradeOut.offerId !== payload.offerId) return { err: 'Этот код-ответ не подходит к твоему активному предложению.' };
-  if (G.party.length >= 6) return { err: 'Команда полна — освободи место и попробуй снова.' };
   const received = tradeMonRevive(payload.mon);
-  G.party.push(received);
+  const dest = tradeReceive(received);
   dexCaught(received);
   const finalCode = tradeEncode({ v: 1, kind: 'final', offerId: payload.offerId, mon: G.tradeOut.mon });
   G.usedTrades.add(payload.offerId);
@@ -757,22 +786,21 @@ function tradeCompleteOffer(payload) {
   G.stats.friendTrades++;
   updateHUD();
   saveGame();
-  return { code: finalCode, received };
+  return { code: finalCode, received, dest };
 }
 
 function tradeFinalize(payload) {
   if (!G.tradeIn || G.tradeIn.offerId !== payload.offerId) return { err: 'Этот финальный код не подходит к твоему текущему обмену.' };
   if (tradeMonHash(payload.mon) !== G.tradeIn.expectHash) return { err: 'Обман! В коде не тот монстрик, что был обещан в предложении.' };
-  if (G.party.length >= 6) return { err: 'Команда полна — освободи место и попробуй снова.' };
   const received = tradeMonRevive(payload.mon);
-  G.party.push(received);
+  const dest = tradeReceive(received);
   dexCaught(received);
   G.usedTrades.add(payload.offerId);
   G.tradeIn = null;
   G.stats.friendTrades++;
   updateHUD();
   saveGame();
-  return { received };
+  return { received, dest };
 }
 
 // ---------- UI обмена ----------
@@ -850,9 +878,8 @@ function renderFriendPanel() {
     const cancel = document.createElement('button');
     cancel.textContent = 'Отменить';
     cancel.onclick = () => {
-      if (G.party.length >= 6) { friendError('Команда полна — некуда вернуть монстрика.'); return; }
       if (!confirm('Отменить предложение и вернуть монстрика? Делай это только если друг ещё НЕ ответил на него.')) return;
-      G.party.push(tradeMonRevive(G.tradeOut.mon));
+      tradeReceive(tradeMonRevive(G.tradeOut.mon));
       G.tradeOut = null;
       renderFriendPanel();
       updateHUD(); saveGame();
@@ -868,9 +895,8 @@ function renderFriendPanel() {
     const cancel = document.createElement('button');
     cancel.textContent = 'Отменить';
     cancel.onclick = () => {
-      if (G.party.length >= 6) { friendError('Команда полна — некуда вернуть монстрика.'); return; }
       if (!confirm('ВНИМАНИЕ: отменяй только если сделка сорвалась и друг НЕ вводил твой код-ответ.\nЕсли он его ввёл — честно доведи обмен до конца. Отменить?')) return;
-      G.party.push(tradeMonRevive(G.tradeIn.mon));
+      tradeReceive(tradeMonRevive(G.tradeIn.mon));
       G.tradeIn = null;
       renderFriendPanel();
       updateHUD(); saveGame();
@@ -885,29 +911,40 @@ function renderFriendPanel() {
   }
 }
 
+// Все монстрики игрока: команда + хранилище
+function allMons() {
+  const out = [];
+  G.party.forEach((m, idx) => out.push({ m, src: 'party', idx, label: '' }));
+  G.storage.forEach((m, idx) => out.push({ m, src: 'store', idx, label: ' <span style="opacity:.6">📦</span>' }));
+  return out;
+}
+
+function friendMonList(main, btnText, onPick) {
+  allMons().forEach(entry => {
+    const row = friendMonRow(tradeMonDump(entry.m), entry.label);
+    const btn = document.createElement('button');
+    btn.textContent = btnText;
+    btn.onclick = () => onPick(entry);
+    row.appendChild(btn);
+    main.appendChild(row);
+  });
+}
+
 function friendOfferFlow() {
   friendError('');
   const main = document.getElementById('friend-main');
   main.innerHTML = '';
   if (G.tradeOut) { friendError('У тебя уже есть активное предложение.'); return; }
-  if (G.party.length < 2) { friendError('Нужно хотя бы 2 монстрика, чтобы одного предложить.'); return; }
   const title = document.createElement('b');
   title.style.color = 'var(--ui-accent)';
-  title.textContent = 'Кого предложить другу?';
+  title.textContent = 'Кого предложить другу? (📦 — из хранилища)';
   main.appendChild(title);
-  G.party.forEach((m, i) => {
-    const row = friendMonRow(tradeMonDump(m));
-    const btn = document.createElement('button');
-    btn.textContent = 'Предложить';
-    btn.onclick = () => {
-      const r = tradeMakeOffer(i);
-      if (r.err) { friendError(r.err); return; }
-      renderFriendPanel();
-      friendShowCode('Код-предложение — отправь другу:', r.code);
-      updateHUD();
-    };
-    row.appendChild(btn);
-    main.appendChild(row);
+  friendMonList(main, 'Предложить', entry => {
+    const r = tradeMakeOffer(entry.src, entry.idx);
+    if (r.err) { friendError(r.err); return; }
+    renderFriendPanel();
+    friendShowCode('Код-предложение — отправь другу:', r.code);
+    updateHUD();
   });
 }
 
@@ -917,6 +954,9 @@ function friendProcessCode() {
   const payload = tradeDecode(document.getElementById('friend-code-in').value);
   if (!payload) { friendError('Код не распознан: проверь, что скопирован целиком и без изменений.'); return; }
   main.innerHTML = '';
+
+  if (payload.kind === 'pvpc') { pvpAnswerFlow(payload); return; }
+  if (payload.kind === 'pvpr') { pvpFinishFlow(payload); return; }
 
   if (payload.kind === 'offer') {
     if (G.usedTrades.has(payload.offerId)) { friendError('Эта сделка уже была завершена.'); return; }
@@ -928,21 +968,14 @@ function friendProcessCode() {
     main.appendChild(title);
     main.appendChild(friendMonRow(payload.mon));
     const pick = document.createElement('b');
-    pick.textContent = 'Кого отдать взамен?';
+    pick.textContent = 'Кого отдать взамен? (📦 — из хранилища)';
     main.appendChild(pick);
-    G.party.forEach((m, i) => {
-      const row = friendMonRow(tradeMonDump(m));
-      const btn = document.createElement('button');
-      btn.textContent = 'Отдать';
-      btn.onclick = () => {
-        const r = tradeAcceptOffer(payload, i);
-        if (r.err) { friendError(r.err); return; }
-        renderFriendPanel();
-        friendShowCode('Код-ответ — отправь другу (взамен он пришлёт финальный код):', r.code);
-        updateHUD();
-      };
-      row.appendChild(btn);
-      main.appendChild(row);
+    friendMonList(main, 'Отдать', entry => {
+      const r = tradeAcceptOffer(payload, entry.src, entry.idx);
+      if (r.err) { friendError(r.err); return; }
+      renderFriendPanel();
+      friendShowCode('Код-ответ — отправь другу (взамен он пришлёт финальный код):', r.code);
+      updateHUD();
     });
     return;
   }
@@ -960,7 +993,7 @@ function friendProcessCode() {
       const r = tradeCompleteOffer(payload);
       if (r.err) { friendError(r.err); return; }
       sfx('catch');
-      toast('🤝 Обмен! ' + monName(r.received) + ' теперь с тобой.');
+      toast('🤝 Обмен! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в хранилище (B).' : ' теперь с тобой.'));
       renderFriendPanel();
       friendShowCode('Финальный код — ОБЯЗАТЕЛЬНО отправь другу, иначе он не получит монстрика:', r.code);
     };
@@ -972,13 +1005,91 @@ function friendProcessCode() {
   const r = tradeFinalize(payload);
   if (r.err) { friendError(r.err); return; }
   sfx('catch');
-  toast('🤝 Обмен завершён! ' + monName(r.received) + ' теперь с тобой.');
+  toast('🤝 Обмен завершён! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в хранилище (B).' : ' теперь с тобой.'));
   renderFriendPanel();
   const done = document.createElement('b');
   done.style.color = 'var(--ui-accent)';
   done.textContent = '🎉 Сделка закрыта — ты получил:';
   main.appendChild(done);
   main.appendChild(friendMonRow(tradeMonDump(r.received)));
+}
+
+// ===== Монстрохранилище =====
+
+function toggleStorage() {
+  const panel = document.getElementById('storage-panel');
+  if (G.state === 'storage') {
+    panel.classList.add('hidden');
+    G.state = 'world';
+    return;
+  }
+  if (G.state === 'party') {
+    document.getElementById('party-panel').classList.add('hidden');
+    G.state = 'world';
+  }
+  if (G.state !== 'world') return;
+  G.state = 'storage';
+  renderStorage();
+  panel.classList.remove('hidden');
+}
+
+function storageWithdraw(i) {
+  if (G.party.length >= 6) { toast('Команда полна!'); return false; }
+  const m = G.storage.splice(i, 1)[0];
+  if (m) G.party.push(m);
+  updateHUD(); saveGame();
+  return true;
+}
+
+function storageDeposit(partyIdx) {
+  if (G.party.length < 2) { toast('Нельзя убрать последнего монстрика!'); return false; }
+  const m = G.party.splice(partyIdx, 1)[0];
+  if (m) {
+    if (m.charm) { G.charms[m.charm]++; m.charm = null; recalcStats(m); }
+    G.storage.push(m);
+  }
+  updateHUD(); saveGame();
+  return true;
+}
+
+function storageRelease(i) {
+  const m = G.storage[i];
+  if (!m) return false;
+  if (!confirm('Отпустить ' + monName(m) + ' насовсем?')) return false;
+  G.storage.splice(i, 1);
+  updateHUD(); saveGame();
+  return true;
+}
+
+function renderStorage() {
+  document.getElementById('storage-info').textContent =
+    G.storage.length ? 'Хранится: ' + G.storage.length + '. Отсюда можно брать в команду, для яиц и обменов.' :
+    'Пусто. Сюда попадают пойманные при полной команде — и кого сам уберёшь из команды.';
+  const rows = document.getElementById('storage-rows');
+  rows.innerHTML = '';
+  G.storage.forEach((m, i) => {
+    const st = getSpecies(m.speciesSeed).stages[m.stage];
+    const t = TYPE_INFO[st.type];
+    const row = document.createElement('div');
+    row.className = 'prow';
+    row.appendChild(monMiniCanvas(m, 28));
+    const info = document.createElement('div');
+    info.className = 'info';
+    info.innerHTML = '<span class="nm">' + (m.shiny ? '✨' : '') + monName(m) + '</span> Ур.' + m.level +
+      ' <span style="color:' + t.color + '">' + t.ru + '</span>' +
+      '<div style="opacity:.75;font-size:11px">ОЗ ' + m.maxHp + ' · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd + '</div>';
+    row.appendChild(info);
+    const bTake = document.createElement('button');
+    bTake.textContent = 'В команду';
+    bTake.disabled = G.party.length >= 6;
+    bTake.onclick = () => { storageWithdraw(i); renderStorage(); };
+    row.appendChild(bTake);
+    const bRel = document.createElement('button');
+    bRel.textContent = 'Отпустить';
+    bRel.onclick = () => { if (storageRelease(i)) renderStorage(); };
+    row.appendChild(bRel);
+    rows.appendChild(row);
+  });
 }
 
 // ===== Питомник =====
@@ -996,12 +1107,13 @@ function hatchEgg() {
     if (baby.moves.length >= 4) baby.moves.pop();
     baby.moves.push(moveInstance(egg.inherit));
   }
-  G.party.push(baby);
+  const dest = tradeReceive(baby);
   dexCaught(baby);
   G.egg = null;
   G.stats.eggsHatched++;
   sfx('catch');
-  toast('🐣 Из яйца вылупился ' + (baby.shiny ? '✨' : '') + monName(baby) + '!');
+  toast('🐣 Из яйца вылупился ' + (baby.shiny ? '✨' : '') + monName(baby) +
+    (dest === 'store' ? '! Он ждёт в хранилище (B).' : '!'));
   updateHUD();
   saveGame();
 }
@@ -1009,28 +1121,30 @@ function hatchEgg() {
 function openNursery() {
   if (G.state !== 'world') return;
   if (G.egg) { toast('🥚 Питомник: «Сначала выноси текущее яйцо! Осталось шагов: ' + G.egg.steps + '»'); return; }
-  if (G.party.length < 2) { toast('🥚 Питомник: «Приходи с двумя монстриками!»'); return; }
+  if (G.party.length + G.storage.length < 2) { toast('🥚 Питомник: «Приходи с двумя монстриками!»'); return; }
   G.state = 'nursery';
   renderNursery([]);
   document.getElementById('nursery-panel').classList.remove('hidden');
 }
 
 function renderNursery(picked) {
+  const mons = allMons();
   const info = document.getElementById('nursery-info');
   info.innerHTML = picked.length === 0
-    ? 'Выбери <b>первого</b> родителя (500₴ за яйцо):'
-    : 'Выбери <b>второго</b> родителя. Первый: <b style="color:var(--ui-accent)">' + monName(G.party[picked[0]]) + '</b>';
+    ? 'Выбери <b>первого</b> родителя (500₴ за яйцо, 📦 — из хранилища):'
+    : 'Выбери <b>второго</b> родителя. Первый: <b style="color:var(--ui-accent)">' + monName(mons[picked[0]].m) + '</b>';
   const rows = document.getElementById('nursery-rows');
   rows.innerHTML = '';
-  G.party.forEach((m, i) => {
+  mons.forEach((entry, i) => {
     if (picked.includes(i)) return;
+    const m = entry.m;
     const row = document.createElement('div');
     row.className = 'srow';
     const inf = document.createElement('div');
     inf.className = 'info';
     const t = TYPE_INFO[monType(m)];
     inf.innerHTML = '<span class="nm">' + (m.shiny ? '✨' : '') + monName(m) + '</span> Ур.' + m.level +
-      ' <span style="color:' + t.color + '">' + t.ru + '</span>';
+      ' <span style="color:' + t.color + '">' + t.ru + '</span>' + entry.label;
     row.appendChild(inf);
     const btn = document.createElement('button');
     btn.textContent = 'Выбрать';
@@ -1038,7 +1152,7 @@ function renderNursery(picked) {
       if (picked.length === 0) { renderNursery([i]); return; }
       if (G.money < 500) { toast('Не хватает денег (нужно 500₴).'); return; }
       G.money -= 500;
-      const pa = G.party[picked[0]], pb = G.party[i];
+      const pa = mons[picked[0]].m, pb = m;
       const donor = Math.random() < 0.5 ? pa : pb;
       const other = donor === pa ? pb : pa;
       const inheritFrom = Math.random() < 0.5 ? pa : pb;
@@ -1987,16 +2101,15 @@ function togglePartyPanel() {
       row.appendChild(bLead);
     }
     if (G.party.length > 1) {
-      const bRel = document.createElement('button');
-      bRel.textContent = 'Отпустить';
-      bRel.onclick = () => {
-        if (!confirm('Отпустить ' + st.name + ' насовсем?')) return;
-        G.party.splice(i, 1);
+      const bBox = document.createElement('button');
+      bBox.textContent = '📦';
+      bBox.title = 'Убрать в Монстрохранилище';
+      bBox.onclick = () => {
+        storageDeposit(i);
         G.state = 'world';
         togglePartyPanel();
-        updateHUD(); saveGame();
       };
-      row.appendChild(bRel);
+      row.appendChild(bBox);
     }
     rows.appendChild(row);
   });
@@ -2020,6 +2133,7 @@ function initInput() {
     if (e.code === 'KeyO' && (G.state === 'world' || G.state === 'ach')) { toggleAchievements(); return; }
     if (e.code === 'KeyF' && G.state === 'world') { tryFishing(); return; }
     if (e.code === 'KeyT' && (G.state === 'world' || G.state === 'friend')) { toggleFriendPanel(); return; }
+    if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
     if (e.key === 'Escape') {
       if (G.state === 'party') { togglePartyPanel(); return; }
       if (G.state === 'shop') { closeShop(); return; }
@@ -2032,6 +2146,7 @@ function initInput() {
       if (G.state === 'nursery') { closeNursery(); return; }
       if (G.state === 'board') { closeBoard(); return; }
       if (G.state === 'friend') { toggleFriendPanel(); return; }
+      if (G.state === 'storage') { toggleStorage(); return; }
     }
     keys.add(e.code);
     keys.add(e.key);
@@ -2074,6 +2189,9 @@ function initTitle() {
   document.getElementById('btn-friend-close').onclick = () => toggleFriendPanel();
   document.getElementById('btn-friend-offer').onclick = () => friendOfferFlow();
   document.getElementById('btn-friend-process').onclick = () => friendProcessCode();
+  document.getElementById('btn-friend-pvp').onclick = () => pvpChallengeFlow();
+  document.getElementById('btn-storage-open').onclick = () => toggleStorage();
+  document.getElementById('btn-storage-close').onclick = () => toggleStorage();
   document.getElementById('btn-trade-close').onclick = () => closeTrade();
   document.getElementById('btn-export').onclick = () => openExport();
   document.getElementById('btn-export-close').onclick = () => closeExport();
@@ -2101,6 +2219,37 @@ function initTitle() {
   };
 }
 
+// ===== Тач-управление =====
+
+function initTouch() {
+  const isTouch = 'ontouchstart' in window || navigator.maxTouchPoints > 0;
+  if (!isTouch) return;
+  document.getElementById('touch-ui').classList.remove('hidden');
+  // крестовина: зажатие = зажатая клавиша
+  document.querySelectorAll('#dpad .tbtn').forEach(btn => {
+    const k = btn.dataset.k;
+    const press = e => { e.preventDefault(); keys.add(k); btn.classList.add('on'); };
+    const release = () => { keys.delete(k); btn.classList.remove('on'); };
+    btn.addEventListener('pointerdown', press);
+    btn.addEventListener('pointerup', release);
+    btn.addEventListener('pointercancel', release);
+    btn.addEventListener('pointerleave', release);
+  });
+  // бег — переключатель
+  const runBtn = document.getElementById('t-run');
+  runBtn.addEventListener('pointerdown', e => {
+    e.preventDefault();
+    if (keys.has('Shift')) { keys.delete('Shift'); runBtn.classList.remove('on'); }
+    else { keys.add('Shift'); runBtn.classList.add('on'); }
+  });
+  document.getElementById('t-fish').addEventListener('pointerdown', e => { e.preventDefault(); tryFishing(); });
+  // меню-кнопки
+  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel };
+  document.querySelectorAll('#touch-menu .tbtn').forEach(btn => {
+    btn.addEventListener('pointerdown', e => { e.preventDefault(); panelFns[btn.dataset.panel](); });
+  });
+}
+
 function main() {
   canvas = document.getElementById('game');
   ctx = canvas.getContext('2d');
@@ -2111,7 +2260,13 @@ function main() {
   traderSprite = makePersonSprite('#3a9a50', '#5a3a1e');
   initInput();
   initTitle();
+  initTouch();
   updateHUD();
+
+  // PWA: офлайн-кэш (только по http/https — с file:// SW не работает)
+  if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    navigator.serviceWorker.register('sw.js').catch(() => {});
+  }
 
   let last = performance.now();
   function frame(now) {
