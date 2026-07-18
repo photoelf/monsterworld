@@ -51,6 +51,14 @@ const INDEX_KEY = 'idx';
 const INDEX_CAP = 1500;         // сколько команд держим в ротации
 const SNAP_TTL = 60 * 86400;    // сейчас неактивные игроки уходят из ротации через 60 дней
 
+const LB_KEY = 'lb';            // лидерборд: топ по силе братвы
+const LB_CAP = 50;              // сколько строк храним/отдаём
+
+// Сила братвы из уже валидированной команды (level ≤ 70 → потолок 6×95 = 570)
+function teamPower(team) {
+  return team.reduce((s, m) => s + m.level + m.stage * 10 + (m.shiny ? 5 : 0), 0);
+}
+
 const CORS = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Methods': 'GET,POST,OPTIONS',
@@ -198,7 +206,36 @@ export default {
         if (idx.length > INDEX_CAP) idx.splice(Math.floor(Math.random() * idx.length), 1);
         await env.SNAPS.put(INDEX_KEY, JSON.stringify(idx));
       }
+      // лидерборд гейтится подписанным tg-id: открытый /team накручивается
+      // curl-ом, поэтому анонимные снапшоты кормят только пул соперников.
+      // Строка = последний залитый снапшот этого tg-id (дедуп по нему же).
+      const user = body.initData ? await verifyInitData(env, body.initData) : null;
+      if (user && user.id) {
+        const entry = {
+          tg: user.id,
+          nick: snap.nick,
+          power: teamPower(team),
+          badges: Math.min(99, Math.max(0, body.badges | 0)),
+          dex: Math.min(999, Math.max(0, body.dex | 0)),
+          ts: Date.now(),
+        };
+        let lb = [];
+        try { lb = JSON.parse(await env.SNAPS.get(LB_KEY)) || []; } catch (e) {}
+        lb = lb.filter(e => e && e.tg !== entry.tg);
+        lb.push(entry);
+        lb.sort((a, b) => b.power - a.power);
+        if (lb.length > LB_CAP) lb.length = LB_CAP;
+        await env.SNAPS.put(LB_KEY, JSON.stringify(lb));
+      }
       return json({ ok: true, pool: idx.length });
+    }
+
+    // --- лидерборд: топ по силе братвы (tg-id наружу не отдаём) ---
+    if (url.pathname === '/leaderboard' && req.method === 'GET') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let lb = [];
+      try { lb = JSON.parse(await env.SNAPS.get(LB_KEY)) || []; } catch (e) {}
+      return json({ top: lb.map(e => ({ nick: e.nick, power: e.power | 0, badges: e.badges | 0, dex: e.dex | 0 })) });
     }
 
     // --- случайная чужая команда ---

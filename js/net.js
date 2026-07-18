@@ -30,8 +30,27 @@ function netUploadTeam() {
   fetch(API_BASE + '/team', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: netClientId(), nick, team: G.party.map(tradeMonDump) }),
+    // initData гейтит строку лидерборда (только TMA); badges/dex — её колонки
+    body: JSON.stringify({ id: netClientId(), nick, team: G.party.map(tradeMonDump),
+      initData: tgInitData(), badges: G.badges.length, dex: G.dex.caught.size }),
   }).catch(() => {});
+}
+
+// ===== Лидерборд: читают все, попадают только TMA-игроки (см. worker.js) =====
+
+let _lbCache = null, _lbTs = 0;
+
+// cb(top|null); кэш 5 минут — не жечь KV на переоткрытиях вкладки
+function netFetchLeaderboard(cb) {
+  if (!API_BASE) { cb(null); return; }
+  if (_lbCache && Date.now() - _lbTs < 300000) { cb(_lbCache); return; }
+  fetch(API_BASE + '/leaderboard')
+    .then(r => r.json())
+    .then(d => {
+      if (d && Array.isArray(d.top)) { _lbCache = d.top; _lbTs = Date.now(); }
+      cb(_lbCache);
+    })
+    .catch(() => cb(_lbCache));
 }
 
 // Кэш одного «живого соперника»; пополняется в фоне

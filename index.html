@@ -231,6 +231,7 @@
     padding: 6px 12px; font-size: 13px;
   }
   .arow.locked { opacity: .45; }
+  .arow.lb-me { border-color: var(--ui-accent); }
   .arow .ic { font-size: 20px; }
   .arow .nm { color: var(--ui-accent); font-weight: bold; }
   /* ---------- Тач-управление ---------- */
@@ -536,10 +537,11 @@
     <button id="btn-board-close">Закрыть (Esc)</button>
   </div>
 
-  <!-- Достижения -->
+  <!-- Достижения + лидерборд -->
   <div id="ach-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Достижения</h1>
     <button id="btn-ach-close" class="close-top">Закрыть (O)</button>
+    <div id="ach-tabs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;"></div>
     <div id="ach-count" style="opacity:.85;"></div>
     <div id="ach-rows" style="display:flex;flex-direction:column;gap:5px;max-height:380px;overflow-y:auto;"></div>
   </div>

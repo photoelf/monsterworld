@@ -2292,6 +2292,8 @@ function closeTeach() {
 
 // ===== Достижения (панель) =====
 
+let _achTab = 'ach';
+
 function toggleAchievements() {
   const panel = document.getElementById('ach-panel');
   if (G.state === 'ach') {
@@ -2301,20 +2303,77 @@ function toggleAchievements() {
   }
   if (G.state !== 'world') return;
   G.state = 'ach';
-  checkAchievements();
-  document.getElementById('ach-count').textContent =
-    'Открыто: ' + G.achievements.size + ' из ' + ACHIEVEMENTS.length;
+  _achTab = 'ach';
+  renderAchPanel();
+  panel.classList.remove('hidden');
+}
+
+function renderAchPanel() {
+  const tabs = document.getElementById('ach-tabs');
+  tabs.innerHTML = '';
+  for (const [tab, label] of [['ach', '🏆 Достижения'], ['lb', '⚡ Лидерборд']]) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'font-size:12px;padding:6px 10px;';
+    if (tab === _achTab) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+    b.onclick = () => { _achTab = tab; renderAchPanel(); };
+    tabs.appendChild(b);
+  }
+  const count = document.getElementById('ach-count');
   const rows = document.getElementById('ach-rows');
   rows.innerHTML = '';
-  for (const a of ACHIEVEMENTS) {
-    const got = G.achievements.has(a.id);
-    const row = document.createElement('div');
-    row.className = 'arow' + (got ? '' : ' locked');
-    row.innerHTML = '<span class="ic">' + (got ? a.ic : '🔒') + '</span>' +
-      '<span><span class="nm">' + a.name + '</span><br><span style="opacity:.8;font-size:12px">' + a.desc + '</span></span>';
-    rows.appendChild(row);
+  if (_achTab === 'ach') {
+    checkAchievements();
+    count.textContent = 'Открыто: ' + G.achievements.size + ' из ' + ACHIEVEMENTS.length;
+    for (const a of ACHIEVEMENTS) {
+      const got = G.achievements.has(a.id);
+      const row = document.createElement('div');
+      row.className = 'arow' + (got ? '' : ' locked');
+      row.innerHTML = '<span class="ic">' + (got ? a.ic : '🔒') + '</span>' +
+        '<span><span class="nm">' + a.name + '</span><br><span style="opacity:.8;font-size:12px">' + a.desc + '</span></span>';
+      rows.appendChild(row);
+    }
+    return;
   }
-  panel.classList.remove('hidden');
+  renderLeaderboard(count, rows);
+}
+
+function renderLeaderboard(count, rows) {
+  count.textContent = 'Топ по силе братвы · в топ попадают игроки из Telegram';
+  const note = document.createElement('div');
+  note.style.cssText = 'opacity:.7;padding:16px;text-align:center;';
+  note.textContent = 'Загружаю топ...';
+  rows.appendChild(note);
+  netFetchLeaderboard(top => {
+    if (G.state !== 'ach' || _achTab !== 'lb') return; // вкладку уже закрыли/переключили
+    rows.innerHTML = '';
+    if (!top || !top.length) {
+      const empty = document.createElement('div');
+      empty.style.cssText = 'opacity:.7;padding:16px;text-align:center;';
+      empty.textContent = top ? 'Пока пусто. Сыграй бой в Telegram — и попадёшь в топ!' : 'Сеть недоступна — попробуй позже.';
+      rows.appendChild(empty);
+      return;
+    }
+    const medals = ['🥇', '🥈', '🥉'];
+    top.forEach((e, i) => {
+      const mine = typeof playerNick === 'string' && playerNick && e.nick === playerNick;
+      const row = document.createElement('div');
+      row.className = 'arow' + (mine ? ' lb-me' : '');
+      const place = document.createElement('span');
+      place.className = 'ic';
+      place.textContent = medals[i] || String(i + 1);
+      const nm = document.createElement('span');
+      nm.className = 'nm';
+      // чужой ник — только textContent (санитайзер воркера не единственный барьер)
+      nm.textContent = e.nick + (mine ? ' — ты' : '');
+      nm.style.cssText = 'flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;';
+      const stats = document.createElement('span');
+      stats.style.cssText = 'white-space:nowrap;opacity:.9;';
+      stats.textContent = '⚡' + (e.power | 0) + ' 🏅' + (e.badges | 0) + ' 📖' + (e.dex | 0);
+      row.append(place, nm, stats);
+      rows.appendChild(row);
+    });
+  });
 }
 
 // ===== Настройки =====
