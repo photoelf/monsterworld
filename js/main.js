@@ -2079,12 +2079,20 @@ function stripKeyHints() {
 }
 
 function renderSettings() {
+  // фулскрин: только десктопный браузер — внутри Telegram и на мобиле
+  // Fullscreen API не работает / не нужен
   const fsBtn = document.getElementById('set-fullscreen');
-  if (IS_MOBILE) fsBtn.style.display = 'none';
-  else fsBtn.onclick = () => {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else document.documentElement.requestFullscreen().catch(() => {});
-  };
+  if (IS_MOBILE || IS_TMA || !document.documentElement.requestFullscreen) {
+    fsBtn.style.display = 'none';
+  } else {
+    fsBtn.style.display = '';
+    fsBtn.textContent = document.fullscreenElement ? '⛶ Выйти из фулскрина' : '⛶ На весь экран';
+    fsBtn.onclick = () => {
+      if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+      else document.documentElement.requestFullscreen().catch(() => toast('Браузер не пустил в фулскрин.'));
+      setTimeout(renderSettings, 300);
+    };
+  }
   const sndBtn = document.getElementById('set-sound');
   sndBtn.textContent = SOUND_ON ? '🔊 Звук: вкл' : '🔇 Звук: выкл';
   sndBtn.onclick = () => {
@@ -2097,8 +2105,11 @@ function renderSettings() {
   note.textContent = urlForce
     ? 'Режим зафиксирован параметром в адресе (?desktop/?mobile) — переключение уберёт его.'
     : 'Смена режима перезагрузит игру.';
+  // подсветка по живому значению localStorage, не по конcтанте загрузки
+  let stored = '';
+  try { stored = localStorage.getItem('mw-mode') || ''; } catch (e) {}
   document.querySelectorAll('#set-mode button').forEach(b => {
-    const active = (FORCED_MODE || '') === b.dataset.mode && !urlForce;
+    const active = stored === b.dataset.mode && !urlForce;
     b.style.borderColor = active ? 'var(--ui-accent)' : '';
     b.style.color = active ? 'var(--ui-accent)' : '';
     b.onclick = () => {
@@ -2106,11 +2117,14 @@ function renderSettings() {
       const mode = b.dataset.mode;
       try { mode ? localStorage.setItem('mw-mode', mode) : localStorage.removeItem('mw-mode'); } catch (e) {}
       saveGame();
-      // чистим отладочные форс-параметры, иначе они переспорят настройку
+      note.textContent = '⏳ Перезагружаю…';
+      // чистим отладочные форс-параметры, иначе они переспорят настройку;
+      // replace того же URL кое-где не перезагружает — тогда явный reload
       const u = new URL(location.href);
       u.searchParams.delete('desktop');
       u.searchParams.delete('mobile');
-      location.replace(u.href);
+      if (u.href === location.href) location.reload();
+      else location.replace(u.href);
     };
   });
 }

@@ -1,8 +1,10 @@
 'use strict';
 
-// Офлайн-кэш: stale-while-revalidate — отвечаем из кэша мгновенно,
-// в фоне обновляем; новая версия подхватится при следующей загрузке.
-const CACHE = 'monsterworld-v19';
+// Офлайн-кэш, атомарные обновления: страница всегда живёт из кэша своей версии;
+// новая версия приезжает ТОЛЬКО целиком — установкой нового SW (бамп CACHE),
+// который качает все ассеты мимо HTTP-кэша (cache:'reload'). Иначе ловим микс
+// старых и новых файлов (GH Pages кэширует по 10 мин) — уже наступали (v19).
+const CACHE = 'monsterworld-v20';
 const ASSETS = [
   './', './index.html',
   './js/tg.js', './js/net.js', './js/util.js', './js/data.js', './js/world.js', './js/battle.js', './js/main.js', './js/pvp.js',
@@ -11,7 +13,9 @@ const ASSETS = [
 ];
 
 self.addEventListener('install', e => {
-  e.waitUntil(caches.open(CACHE).then(c => c.addAll(ASSETS)).then(() => self.skipWaiting()));
+  e.waitUntil(caches.open(CACHE)
+    .then(c => c.addAll(ASSETS.map(u => new Request(u, { cache: 'reload' }))))
+    .then(() => self.skipWaiting()));
 });
 
 self.addEventListener('activate', e => {
@@ -25,16 +29,8 @@ self.addEventListener('activate', e => {
 self.addEventListener('fetch', e => {
   if (e.request.method !== 'GET') return;
   if (new URL(e.request.url).origin !== location.origin) return;
+  // cache-first без фоновой дозаписи: никакого поштучного обновления файлов
   e.respondWith(
-    caches.match(e.request).then(cached => {
-      const fresh = fetch(e.request).then(res => {
-        if (res.ok) {
-          const clone = res.clone();
-          caches.open(CACHE).then(c => c.put(e.request, clone));
-        }
-        return res;
-      }).catch(() => cached);
-      return cached || fresh;
-    })
+    caches.match(e.request).then(cached => cached || fetch(e.request))
   );
 });

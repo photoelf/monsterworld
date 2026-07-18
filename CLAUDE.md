@@ -8,6 +8,7 @@
 - **Mini App**: бот **@poketmons_bot** (название «Карманная Братва»). Токен бота — в Cloudflare Secrets (BOT_TOKEN); он засветился в чате 17.07.2026 — при ротации: `wrangler secret put BOT_TOKEN` + повторный `setWebhook` с WEBHOOK_SECRET.
 - **API**: Cloudflare Worker `monsterworld-api` → https://monsterworld-api.photoelf.workers.dev (= API_BASE в js/net.js). Код в `backend/worker.js`. Деплой: `cd backend && env -u CLOUDFLARE_API_TOKEN npx wrangler deploy` (**важно**: в окружении лежит битый CLOUDFLARE_API_TOKEN — всегда `env -u`; auth = OAuth wrangler login). KV namespace: `6aa2b5ec131542dbbd2a5c6a388d63e0` (binding SNAPS).
 - **ОБЯЗАТЕЛЬНО**: при любом изменении фронта поднимать версию `CACHE` в `sw.js` (номер смотреть в самом sw.js), иначе PWA-клиенты остаются на старом коде. Пользователю говорить «перезапусти мини-апп дважды».
+- **SW-обновления атомарные** (после аварии v19): install качает ассеты с `cache:'reload'` (GH Pages кэширует по 10 мин — иначе в кэш SW попадает микс старых/новых файлов и main() падает), fetch — строго cache-first БЕЗ фоновой дозаписи. Не возвращать stale-while-revalidate.
 
 ## Файлы
 
