@@ -86,20 +86,28 @@ const CHARMS = {
 
 // ===== Предметы лавки =====
 
+// Категории лавки (вкладки): id → подпись
+const SHOP_CATS = [
+  ['potions', '🧪 Зелья'],
+  ['gear',    '🎒 Снаряжение'],
+  ['charms',  '🧿 Амулеты'],
+  ['donate',  '⭐ Особое'],
+];
+
 const SHOP_ITEMS = [
-  { id: 'orb',    name: 'Сфера ловли',  price: 80,  desc: 'Для поимки диких братишек.' },
-  { id: 'potion', name: 'Зелье',        price: 120, desc: 'Восстанавливает 50% ОЗ.' },
-  { id: 'superpotion', name: 'Суперзелье', price: 350, desc: 'Полностью восстанавливает ОЗ.' },
-  { id: 'tonic',  name: 'Тоник',        price: 90,  desc: 'Снимает любой статусный эффект.' },
-  { id: 'ether',  name: 'Эфир',         price: 250, desc: 'Восполняет все ПП умений одного братишки.' },
-  { id: 'scroll', name: 'Свиток умения', price: 400, desc: 'Случайное умение — научи любого братишку.' },
-  { id: 'rod',    name: 'Удочка',       price: 600, desc: 'Рыбачь у воды клавишей F. Покупается один раз.' },
-  { id: 'stone',  name: 'Камень эволюции', price: 1500, desc: 'Мгновенно эволюционирует братишку.' },
-  { id: 'charm_atk', name: 'Амулет силы',    price: 800, desc: '+15% к атаке носителя.' },
-  { id: 'charm_def', name: 'Амулет щита',    price: 800, desc: '+15% к защите носителя.' },
-  { id: 'charm_spd', name: 'Амулет ветра',   price: 800, desc: '+15% к скорости носителя.' },
-  { id: 'charm_hp',  name: 'Амулет жизни',   price: 800, desc: '+12% к здоровью носителя.' },
-  { id: 'charm_exp', name: 'Амулет мудрости', price: 800, desc: '+25% опыта носителю.' },
+  { id: 'potion', cat: 'potions', name: 'Зелье',        price: 120, desc: 'Восстанавливает 50% ОЗ.' },
+  { id: 'superpotion', cat: 'potions', name: 'Суперзелье', price: 350, desc: 'Полностью восстанавливает ОЗ.' },
+  { id: 'tonic',  cat: 'potions', name: 'Тоник',        price: 90,  desc: 'Снимает любой статусный эффект.' },
+  { id: 'ether',  cat: 'potions', name: 'Эфир',         price: 250, desc: 'Восполняет все ПП умений одного братишки.' },
+  { id: 'orb',    cat: 'gear', name: 'Сфера ловли',  price: 80,  desc: 'Для поимки диких братишек.' },
+  { id: 'scroll', cat: 'gear', name: 'Свиток умения', price: 400, desc: 'Случайное умение — научи любого братишку.' },
+  { id: 'rod',    cat: 'gear', name: 'Удочка',       price: 600, desc: 'Рыбачь у воды клавишей F. Покупается один раз.' },
+  { id: 'stone',  cat: 'gear', name: 'Камень эволюции', price: 1500, desc: 'Мгновенно эволюционирует братишку.' },
+  { id: 'charm_atk', cat: 'charms', name: 'Амулет силы',    price: 800, desc: '+15% к атаке носителя.' },
+  { id: 'charm_def', cat: 'charms', name: 'Амулет щита',    price: 800, desc: '+15% к защите носителя.' },
+  { id: 'charm_spd', cat: 'charms', name: 'Амулет ветра',   price: 800, desc: '+15% к скорости носителя.' },
+  { id: 'charm_hp',  cat: 'charms', name: 'Амулет жизни',   price: 800, desc: '+12% к здоровью носителя.' },
+  { id: 'charm_exp', cat: 'charms', name: 'Амулет мудрости', price: 800, desc: '+25% опыта носителю.' },
 ];
 
 // ===== Генерация имён =====
@@ -349,9 +357,10 @@ const _spriteCache = new Map();
 
 // Генерирует симметричного пиксельного монстрика на canvas
 // shiny = редкая золотая вариация; back = вид со спины (без глаз);
-// palId = перекраска корпуса из MON_PALETTES (заказные братишки)
+// palId = перекраска корпуса из MON_PALETTES — заказные братишки; выбранный
+// окрас сильнее золота шайни (заказные всегда шайни по статам)
 function speciesSprite(speciesSeed, stage, shiny, back, palId) {
-  const pal = !shiny && validPalette(palId); // сияние ценнее перекраски
+  const pal = validPalette(palId);
   const key = speciesSeed + ':' + stage + (shiny ? ':s' : '') + (back ? ':b' : '') + (pal ? ':' + pal : '');
   if (_spriteCache.has(key)) return _spriteCache.get(key);
 
@@ -400,12 +409,12 @@ function speciesSprite(speciesSeed, stage, shiny, back, palId) {
 
   let info = TYPE_INFO[st.type];
   let accent = TYPE_INFO[pick(rng, TYPE_LIST)].light;
-  if (shiny) {
+  if (pal) {
+    info = MON_PALETTES[pal];
+    accent = shiny ? '#ffffff' : MON_PALETTES[pal].light;
+  } else if (shiny) {
     info = { color: '#e8c95a', dark: '#8f7222', light: '#fff0b0' };
     accent = '#ffffff';
-  } else if (pal) {
-    info = MON_PALETTES[pal];
-    accent = MON_PALETTES[pal].light;
   }
   const cv = document.createElement('canvas');
   cv.width = size; cv.height = size;

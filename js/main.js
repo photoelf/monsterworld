@@ -136,7 +136,8 @@ const OUTFIT_ACCS = {
   crown:   { name: '👑 Корона' },
 };
 
-function makePersonSprite(shirt, hair, acc) {
+function makePersonSprite(shirt, hair, acc, skin) {
+  skin = skin || '#e8b088';
   // 4 направления x 2 кадра, каждый 16x16
   const cv = document.createElement('canvas');
   cv.width = 16 * 4; cv.height = 16 * 2;
@@ -154,7 +155,7 @@ function makePersonSprite(shirt, hair, acc) {
       c.fillStyle = shirt;
       c.fillRect(ox + 4, oy + 7, 8, 5);
       // руки
-      c.fillStyle = '#e8b088';
+      c.fillStyle = skin;
       c.fillRect(ox + 3, oy + 8, 1, 3);
       c.fillRect(ox + 12, oy + 8, 1, 3);
       // голова
@@ -197,11 +198,11 @@ function makePersonSprite(shirt, hair, acc) {
 }
 
 // Наряд игрока: дефолт как у классического героя
-const DEFAULT_OUTFIT = { shirt: '#d84848', hair: '#6b3a1e', acc: null };
+const DEFAULT_OUTFIT = { shirt: '#d84848', hair: '#6b3a1e', acc: null, skin: '#e8b088' };
 
 function applyOutfit() {
   const o = (G && G.outfit) || DEFAULT_OUTFIT;
-  playerSprite = makePersonSprite(o.shirt, o.hair, OUTFIT_ACCS[o.acc] ? o.acc : null);
+  playerSprite = makePersonSprite(o.shirt, o.hair, OUTFIT_ACCS[o.acc] ? o.acc : null, o.skin);
 }
 
 let playerSprite = null, trainerSprite = null, masterSprite = null, traderSprite = null;
@@ -1686,26 +1687,53 @@ function closeShop() {
   saveGame();
 }
 
+let _shopCat = 'potions'; // активная вкладка лавки (живёт между открытиями)
+
+// Строка-витрина в категории «Особое»: name/desc/price + действие
+function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick) {
+  const row = document.createElement('div');
+  row.className = 'srow';
+  const info = document.createElement('div');
+  info.className = 'info';
+  info.innerHTML = '<span class="nm" style="color:var(--ui-accent)">' + name + '</span> — ' + priceHtml +
+    '<br><span style="opacity:.8">' + desc + '</span>';
+  row.appendChild(info);
+  const btn = document.createElement('button');
+  btn.textContent = btnText;
+  btn.onclick = onClick;
+  row.appendChild(btn);
+  rows.appendChild(row);
+}
+
 function renderShop() {
   document.getElementById('shop-money').textContent = 'У тебя: ' + G.money + '₴';
+  // вкладки категорий
+  const tabs = document.getElementById('shop-tabs');
+  tabs.innerHTML = '';
+  for (const [cat, label] of SHOP_CATS) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'font-size:12px;padding:6px 10px;';
+    if (cat === _shopCat) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+    b.onclick = () => { _shopCat = cat; renderShop(); };
+    tabs.appendChild(b);
+  }
   const rows = document.getElementById('shop-rows');
   rows.innerHTML = '';
-  // витрина генератора заказных братишек (за Stars)
-  {
-    const row = document.createElement('div');
-    row.className = 'srow';
-    const info = document.createElement('div');
-    info.className = 'info';
-    info.innerHTML = '<span class="nm" style="color:var(--ui-accent)">✨ Заказной братишка</span> — ' + MONGEN_PRICE + '⭐' +
-      '<br><span style="opacity:.8">Уникальный братишка: твой тип, окрас и имя. 3 стадии, статы не выше легендарок.</span>';
-    row.appendChild(info);
-    const btn = document.createElement('button');
-    btn.textContent = 'Открыть';
-    btn.onclick = () => openMongen();
-    row.appendChild(btn);
-    rows.appendChild(row);
+
+  // «Особое»: витрины за Stars
+  if (_shopCat === 'donate') {
+    shopSpecialRow(rows, '✨ Заказной братишка', 'Уникальный шайни-братишка: твой тип, окрас и имя. 3 стадии.',
+      MONGEN_PRICE + '⭐', 'Открыть', () => openMongen());
+    shopSpecialRow(rows, '👕 Гардероб', 'Перекраски футболки, волос и кожи + аксессуары. Навсегда.',
+      wrdUnlocked ? '<span style="opacity:.7">куплено</span>' : WARDROBE_PRICE + '⭐', 'Открыть', () => openWardrobe());
+    shopSpecialRow(rows, '🖼 Свои спрайты', 'Загружай собственные PNG-облики братишек — кнопка на экране братишки.',
+      sprUnlocked ? '<span style="opacity:.7">куплено</span>' : SPRITE_PRICE + '⭐', 'К братве', () => { closeShop(); togglePartyPanel(); });
+    return;
   }
+
   for (const item of SHOP_ITEMS) {
+    if (item.cat !== _shopCat) continue;
     const isCharm = item.id.startsWith('charm_');
     const charmKind = isCharm ? item.id.slice(6) : null;
     const have = item.id === 'orb' ? G.orbs
@@ -2189,11 +2217,14 @@ function renderSettings() {
 
 const OUTFIT_SHIRTS = ['#d84848', '#3a6ab0', '#3a9a50', '#d8a018', '#8a4fd0', '#e87fb0', '#3aa8a0', '#26262e'];
 const OUTFIT_HAIRS  = ['#6b3a1e', '#2a2a38', '#e8c95a', '#b0523a', '#f0f0f0', '#8a4fd0', '#3a6ab0', '#3a9a50'];
+// белый, 5 телесных от светлого к тёмному, чёрный
+const OUTFIT_SKINS  = ['#f0f0f5', '#ffe0c8', '#e8b088', '#c98d5e', '#a06a42', '#7a4a2c', '#26262e'];
 
 let _wrdDraft = null; // черновик наряда, пока панель открыта
 
 function openWardrobe() {
   if (G.state === 'settings') { document.getElementById('settings-panel').classList.add('hidden'); G.state = 'world'; }
+  if (G.state === 'shop') closeShop();
   if (G.state !== 'world') return;
   G.state = 'wardrobe';
   _wrdDraft = Object.assign({}, DEFAULT_OUTFIT, G.outfit || {});
@@ -2213,7 +2244,7 @@ function renderWardrobe() {
   cv.width = 16; cv.height = 16;
   const c = cv.getContext('2d');
   c.imageSmoothingEnabled = false;
-  c.drawImage(makePersonSprite(_wrdDraft.shirt, _wrdDraft.hair, _wrdDraft.acc), 0, 0, 16, 16, 0, 0, 16, 16);
+  c.drawImage(makePersonSprite(_wrdDraft.shirt, _wrdDraft.hair, _wrdDraft.acc, _wrdDraft.skin), 0, 0, 16, 16, 0, 0, 16, 16);
 
   const swatchRow = (elId, colors, key) => {
     const el = document.getElementById(elId);
@@ -2228,6 +2259,7 @@ function renderWardrobe() {
   };
   swatchRow('wrd-shirts', OUTFIT_SHIRTS, 'shirt');
   swatchRow('wrd-hairs', OUTFIT_HAIRS, 'hair');
+  swatchRow('wrd-skins', OUTFIT_SKINS, 'skin');
 
   const accEl = document.getElementById('wrd-accs');
   accEl.innerHTML = '';
@@ -2326,7 +2358,7 @@ function renderMongen() {
     cv.width = 20; cv.height = 20;
     const c = cv.getContext('2d');
     c.imageSmoothingEnabled = false;
-    const spr = speciesSprite(_mgDraft.seed, st, false, false, _mgDraft.palette);
+    const spr = speciesSprite(_mgDraft.seed, st, true, false, _mgDraft.palette);
     c.drawImage(spr, Math.floor((20 - spr.width) / 2), Math.floor((20 - spr.height) / 2));
     cv.style.cssText = 'width:' + (40 + st * 14) + 'px;image-rendering:pixelated;align-self:flex-end;';
     prev.appendChild(cv);
@@ -2334,7 +2366,7 @@ function renderMongen() {
   const b0 = sp.stages[0].base;
   document.getElementById('mg-info').innerHTML =
     '<b>' + sp.stages.map(s => s.name).join(' → ') + '</b><br>' +
-    '<span style="opacity:.8">Сумма базовых статов: ' + (b0.hp + b0.atk + b0.def + b0.spd) +
+    '<span style="opacity:.8">✨ шайни (+18% статов) · сумма базы: ' + (b0.hp + b0.atk + b0.def + b0.spd) +
     ' · 3 стадии · старт с Ур.5</span>';
 }
 
@@ -2352,6 +2384,9 @@ function renderMongenBuy(status) {
         const m = makeMonster(_mgDraft.seed, 0, 5);
         m.nick = nameInp.value.trim().slice(0, 12) || null;
         m.palette = _mgDraft.palette;
+        m.shiny = true;           // заказные всегда шайни (+18% статов, ✨)
+        recalcStats(m);
+        m.hp = m.maxHp;
         if (G.party.length < 6) { G.party.push(m); toast('✨ ' + monName(m) + ' присоединяется к братве!'); }
         else { G.storage.push(m); toast('✨ ' + monName(m) + ' ждёт в кармане!'); }
         dexCaught(m);
