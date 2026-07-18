@@ -3157,6 +3157,16 @@ function main() {
 
   // PWA: офлайн-кэш (только по http/https — с file:// SW не работает)
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {
+    // как только новый SW (свежая версия кэша) берёт контроль — один раз
+    // перезагружаемся, чтобы подтянуть свежий код без ручного «перезапусти дважды».
+    // hadController: на первой установке SW контроллера ещё нет — там reload не нужен
+    const hadController = !!navigator.serviceWorker.controller;
+    let swReloaded = false;
+    navigator.serviceWorker.addEventListener('controllerchange', () => {
+      if (swReloaded || !hadController) return;
+      swReloaded = true;
+      location.reload();
+    });
     navigator.serviceWorker.register('sw.js').catch(() => {});
   }
 
