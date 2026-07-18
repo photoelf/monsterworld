@@ -33,7 +33,8 @@ function netUploadTeam() {
     // initData гейтит строку лидерборда (только TMA); badges/dex — её колонки
     body: JSON.stringify({ id: netClientId(), nick, team: G.party.map(tradeMonDump),
       initData: tgInitData(), badges: G.badges.length, dex: G.dex.caught.size }),
-  }).catch(() => {});
+  }).then(r => { if (r.ok) _lbTs = 0; }) // свой аплоад мог изменить топ — сбросить кэш вкладки
+    .catch(() => {});
 }
 
 // ===== Лидерборд: читают все, попадают только TMA-игроки (см. worker.js) =====
