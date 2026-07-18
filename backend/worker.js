@@ -135,6 +135,23 @@ function cleanId(raw) {
   return String(raw || '').replace(/[^a-zA-Z0-9_-]/g, '').slice(0, 64);
 }
 
+// Ключ покупателя. Для TMA — подписанный tg-id ('tg'+id): покупка привязана к
+// аккаунту Telegram, а не к устройству/clientId и не к сейву (сейв tg-id не
+// содержит — передача сейва чужому НЕ разблокирует платное). Для браузера без
+// initData — фоллбэк на clientId. vip: состоит ли покупатель в VIP-списке.
+async function buyerKey(env, body) {
+  if (body && body.initData) {
+    const user = await verifyInitData(env, body.initData);
+    if (user && user.id) {
+      const vip = !!(await env.SNAPS.get('vip:' + user.id));
+      return { key: 'tg' + user.id, tg: user.id, vip };
+    }
+  }
+  return { key: cleanId(body && body.id), tg: null, vip: false };
+}
+// clientId (браузер) должен быть достаточно длинным; tg-ключ валиден всегда
+function badBuyer(b) { return b.tg === null && b.key.length < 8; }
+
 async function rateLimited(env, ip) {
   const key = 'rl:' + ip + ':' + Math.floor(Date.now() / 60000);
   const n = parseInt(await env.SNAPS.get(key) || '0', 10);
@@ -196,36 +213,51 @@ export default {
       return json({ snap: null });
     }
 
-    // --- счёт на покупку (Telegram Stars); product: spr|mon|acc (+item) ---
+    // --- счёт на покупку (Telegram Stars); product: spr|mon|scoot|acc (+item) ---
+    // VIP получает товар бесплатно, но ТОЛЬКО по явному нажатию (granted:true) —
+    // авто-выдачи при проверке статуса больше нет.
     if (url.pathname === '/invoice' && req.method === 'POST') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
-      const id = cleanId(body.id);
-      if (id.length < 8) return json({ err: 'bad id' }, 400);
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({ err: 'bad id' }, 400);
+
       // аксессуар гардероба — поштучный товар со своей ценой
       if (body.product === 'acc') {
         const item = String(body.item || '');
         if (!ACC_PRICES[item]) return json({ err: 'bad item' }, 400);
-        const owned = JSON.parse(await env.SNAPS.get('accs:' + id) || '[]');
-        if (owned.includes(item) || await env.SNAPS.get('wrd:' + id)) return json({ err: 'already unlocked' }, 409);
+        let owned = [];
+        try { owned = JSON.parse(await env.SNAPS.get('accs:' + b.key) || '[]'); } catch (e) {}
+        if (owned.includes(item)) return json({ err: 'already unlocked' }, 409);
+        if (b.vip) {
+          owned.push(item);
+          await env.SNAPS.put('accs:' + b.key, JSON.stringify(owned));
+          return json({ granted: true, vip: true });
+        }
         const r = await tgApi(env, 'createInvoiceLink', {
           title: 'Аксессуар: ' + ACC_NAMES[item],
           description: 'Аксессуар гардероба «' + ACC_NAMES[item] + '». Навсегда.',
-          payload: 'acc:' + item + ':' + id,
+          payload: 'acc:' + item + ':' + b.key,
           currency: 'XTR',
           prices: [{ label: ACC_NAMES[item], amount: ACC_PRICES[item] }],
         });
         if (!r.ok) return json({ err: 'tg error' }, 502);
         return json({ link: r.result, price: ACC_PRICES[item] });
       }
+
       const prod = PRODUCTS[body.product] ? body.product : 'spr';
       const p = PRODUCTS[prod];
-      if (p.once && await env.SNAPS.get(p.key(id))) return json({ err: 'already unlocked' }, 409);
+      if (p.once && await env.SNAPS.get(p.key(b.key))) return json({ err: 'already unlocked' }, 409);
+      if (b.vip) {
+        if (p.once) await env.SNAPS.put(p.key(b.key), 'vip');
+        else { const c = parseInt(await env.SNAPS.get(p.key(b.key)), 10) || 0; await env.SNAPS.put(p.key(b.key), String(c + 1)); }
+        return json({ granted: true, vip: true });
+      }
       const r = await tgApi(env, 'createInvoiceLink', {
         title: p.title,
         description: p.desc,
-        payload: prod + ':' + id,
+        payload: prod + ':' + b.key,
         currency: 'XTR',
         prices: [{ label: p.once ? 'Разблокировка' : 'Генерация', amount: p.price }],
       });
@@ -241,75 +273,52 @@ export default {
       return json({ unlocked: !!(await env.SNAPS.get('unlock:' + id)) });
     }
 
-    // --- статус покупки + VIP по подписанному Telegram-id; product: spr|wrd ---
+    // --- статус покупки по ключу покупателя (tg-id/clientId); без авто-VIP ---
     if (url.pathname === '/unlock' && req.method === 'POST') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
-      const id = cleanId(body.id);
-      if (id.length < 8) return json({ unlocked: false });
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({ unlocked: false });
       const prod = (body.product === 'wrd' || body.product === 'scoot') ? body.product : 'spr';
-      const key = PRODUCTS[prod].key(id);
-      if (await env.SNAPS.get(key)) return json({ unlocked: true });
-      // initData подписан Telegram — подделать чужой tg-id нельзя
-      if (body.initData) {
-        const user = await verifyInitData(env, body.initData);
-        if (user && user.id && await env.SNAPS.get('vip:' + user.id)) {
-          await env.SNAPS.put(key, 'vip');
-          return json({ unlocked: true, vip: true });
-        }
-      }
-      return json({ unlocked: false });
+      return json({ unlocked: !!(await env.SNAPS.get(PRODUCTS[prod].key(b.key))) });
     }
 
-    // --- гардероб: какие аксессуары куплены; VIP и старый wrd-анлок — все ---
+    // --- гардероб: какие аксессуары реально куплены (по ключу покупателя) ---
     if (url.pathname === '/accs' && req.method === 'POST') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
-      const id = cleanId(body.id);
-      if (id.length < 8) return json({ owned: [] });
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({ owned: [] });
       const all = Object.keys(ACC_PRICES);
-      if (await env.SNAPS.get('wrd:' + id)) return json({ owned: all });
-      if (body.initData) {
-        const user = await verifyInitData(env, body.initData);
-        if (user && user.id && await env.SNAPS.get('vip:' + user.id)) return json({ owned: all, vip: true });
-      }
       let owned = [];
-      try { owned = JSON.parse(await env.SNAPS.get('accs:' + id) || '[]'); } catch (e) {}
+      try { owned = JSON.parse(await env.SNAPS.get('accs:' + b.key) || '[]'); } catch (e) {}
       return json({ owned: owned.filter(a => all.includes(a)) });
     }
 
-    // --- генератор: сколько оплаченных генераций; VIP — без ограничений ---
+    // --- генератор: сколько оплаченных генераций; vip — флаг «бесплатно» для UI ---
     if (url.pathname === '/mongen' && req.method === 'POST') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
-      const id = cleanId(body.id);
-      if (id.length < 8) return json({ credits: 0 });
-      const credits = parseInt(await env.SNAPS.get('mon:' + id), 10) || 0;
-      let vip = false;
-      if (body.initData) {
-        const user = await verifyInitData(env, body.initData);
-        vip = !!(user && user.id && await env.SNAPS.get('vip:' + user.id));
-      }
-      return json({ credits, vip });
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({ credits: 0 });
+      const credits = parseInt(await env.SNAPS.get('mon:' + b.key), 10) || 0;
+      return json({ credits, vip: b.vip });
     }
 
-    // --- генератор: списать один кредит ---
+    // --- генератор: списать одну генерацию (VIP — без ограничений) ---
     if (url.pathname === '/mongen/claim' && req.method === 'POST') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
-      const id = cleanId(body.id);
-      if (id.length < 8) return json({ ok: false });
-      if (body.initData) {
-        const user = await verifyInitData(env, body.initData);
-        if (user && user.id && await env.SNAPS.get('vip:' + user.id)) return json({ ok: true, vip: true });
-      }
-      const credits = parseInt(await env.SNAPS.get('mon:' + id), 10) || 0;
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({ ok: false });
+      if (b.vip) return json({ ok: true, vip: true });
+      const credits = parseInt(await env.SNAPS.get('mon:' + b.key), 10) || 0;
       if (credits < 1) return json({ ok: false });
-      await env.SNAPS.put('mon:' + id, String(credits - 1));
+      await env.SNAPS.put('mon:' + b.key, String(credits - 1));
       return json({ ok: true, left: credits - 1 });
     }
 
@@ -318,9 +327,9 @@ export default {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
-      const id = cleanId(body.id);
+      const b = await buyerKey(env, body);
       const code = String(body.code || '').trim().toUpperCase().replace(/[^A-Z0-9-]/g, '').slice(0, 32);
-      if (id.length < 8 || code.length < 4) return json({ ok: false });
+      if (badBuyer(b) || code.length < 4) return json({ ok: false });
       const raw = await env.SNAPS.get('promo:' + code);
       if (!raw) return json({ ok: false });
       let promo;
@@ -328,7 +337,7 @@ export default {
       if (!promo || !(promo.uses > 0)) return json({ ok: false });
       promo.uses--;
       await env.SNAPS.put('promo:' + code, JSON.stringify(promo));
-      await env.SNAPS.put('unlock:' + id, 'promo:' + code);
+      await env.SNAPS.put('unlock:' + b.key, 'promo:' + code);
       return json({ ok: true, left: promo.uses });
     }
 

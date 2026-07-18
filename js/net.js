@@ -62,28 +62,30 @@ function netTakeRival() {
   return r;
 }
 
+// Подписанный initData текущего запуска (в TMA); null в браузере.
+// Все запросы покупок шлют его — воркер привязывает покупку к tg-id, а не к
+// clientId/сейву (кэш-флаги ниже переименованы в *2, чтобы после перехода на
+// tg-привязку клиент перепроверил сервер, а не доверял старой авто-VIP-выдаче).
+function tgInitData() { return (typeof TG !== 'undefined' && TG && TG.initData) || null; }
+
 // ===== Покупка загрузки кастомных спрайтов (Telegram Stars) =====
 
 const SPRITE_PRICE = 10;   // держать в синхроне с воркером (SPRITE_PRICE_STARS)
 let sprUnlocked = false;
-try { sprUnlocked = localStorage.getItem('mw-spr-unlocked') === '1'; } catch (e) {}
+try { sprUnlocked = localStorage.getItem('mw-spr-unlocked2') === '1'; } catch (e) {}
 
 function netCheckUnlock(cb) {
   if (sprUnlocked || !API_BASE) { if (cb) cb(sprUnlocked); return; }
-  // initData подписан Telegram — VIP-игроки разблокируются автоматически
   fetch(API_BASE + '/unlock', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: netClientId(),
-      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
-    }),
+    body: JSON.stringify({ id: netClientId(), initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => {
       if (d && d.unlocked) {
         sprUnlocked = true;
-        try { localStorage.setItem('mw-spr-unlocked', '1'); } catch (e) {}
+        try { localStorage.setItem('mw-spr-unlocked2', '1'); } catch (e) {}
       }
       if (cb) cb(sprUnlocked);
     })
@@ -95,30 +97,31 @@ function netRedeemCode(code, cb) {
   fetch(API_BASE + '/redeem', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: netClientId(), code }),
+    body: JSON.stringify({ id: netClientId(), code, initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => {
       if (d && d.ok) {
         sprUnlocked = true;
-        try { localStorage.setItem('mw-spr-unlocked', '1'); } catch (e) {}
+        try { localStorage.setItem('mw-spr-unlocked2', '1'); } catch (e) {}
       }
       if (cb) cb(!!(d && d.ok));
     })
     .catch(() => { if (cb) cb(false); });
 }
 
-// Открыть счёт в Stars и дождаться оплаты; product: 'spr'|'wrd'|'mon',
-// checkFn(cb) — как проверить, что покупка дошла; onDone — после подтверждения
+// Открыть счёт в Stars и дождаться оплаты; product: 'spr'|'mon'|'scoot',
+// checkFn(cb) — как проверить, что покупка дошла; onDone — после подтверждения.
+// granted:true — VIP получил бесплатно по явному нажатию (без счёта).
 function netBuyProduct(product, checkFn, onDone) {
   fetch(API_BASE + '/invoice', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: netClientId(), product }),
+    body: JSON.stringify({ id: netClientId(), product, initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => {
-      if (d && d.err === 'already unlocked') { checkFn(ok => { if (ok && onDone) onDone(); }); return; }
+      if (d && (d.err === 'already unlocked' || d.granted)) { checkFn(ok => { if (ok && onDone) onDone(); }); return; }
       if (!d || !d.link) { toast('Не удалось создать счёт — попробуй позже.'); return; }
       if (IS_TMA && TG && TG.openInvoice) {
         TG.openInvoice(d.link, status => {
@@ -145,24 +148,20 @@ function netBuySpriteUnlock(onDone) { netBuyProduct('spr', netCheckUnlock, onDon
 
 const SCOOT_PRICE = 50;   // держать в синхроне с воркером (SCOOT_PRICE_STARS)
 let scootUnlocked = false;
-try { scootUnlocked = localStorage.getItem('mw-scoot-unlocked') === '1'; } catch (e) {}
+try { scootUnlocked = localStorage.getItem('mw-scoot-unlocked2') === '1'; } catch (e) {}
 
 function netCheckScoot(cb) {
   if (scootUnlocked || !API_BASE) { if (cb) cb(scootUnlocked); return; }
   fetch(API_BASE + '/unlock', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: netClientId(),
-      product: 'scoot',
-      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
-    }),
+    body: JSON.stringify({ id: netClientId(), product: 'scoot', initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => {
       if (d && d.unlocked) {
         scootUnlocked = true;
-        try { localStorage.setItem('mw-scoot-unlocked', '1'); } catch (e) {}
+        try { localStorage.setItem('mw-scoot-unlocked2', '1'); } catch (e) {}
       }
       if (cb) cb(scootUnlocked);
     })
@@ -176,32 +175,27 @@ function netBuyScoot(onDone) { netBuyProduct('scoot', netCheckScoot, onDone); }
 
 const ACC_PRICES = { cap: 1, glasses: 2, crown: 5 };
 
-// Кэш купленных аксессуаров (+ гранфазеринг старого гардероба за 15⭐)
+// Кэш купленных аксессуаров (ключ *2 — миграция на tg-привязку; сервер — истина)
 let accsOwned = new Set();
-try {
-  accsOwned = new Set(JSON.parse(localStorage.getItem('mw-accs') || '[]'));
-  if (localStorage.getItem('mw-wrd-unlocked') === '1') for (const a of Object.keys(ACC_PRICES)) accsOwned.add(a);
-} catch (e) {}
+try { accsOwned = new Set(JSON.parse(localStorage.getItem('mw-accs2') || '[]')); } catch (e) {}
 
 function _accsCache() {
-  try { localStorage.setItem('mw-accs', JSON.stringify([...accsOwned])); } catch (e) {}
+  try { localStorage.setItem('mw-accs2', JSON.stringify([...accsOwned])); } catch (e) {}
 }
 
-// Обновить список купленных с сервера; cb(accsOwned)
+// Обновить список купленных с сервера; cb(accsOwned). Сервер — источник истины:
+// список ЗАМЕНЯЕТСЯ (иначе невыкупленное из старого кэша не убралось бы).
 function netAccsStatus(cb) {
   if (!API_BASE) { if (cb) cb(accsOwned); return; }
   fetch(API_BASE + '/accs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: netClientId(),
-      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
-    }),
+    body: JSON.stringify({ id: netClientId(), initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => {
       if (d && Array.isArray(d.owned)) {
-        for (const a of d.owned) accsOwned.add(a);
+        accsOwned = new Set(d.owned.filter(a => ACC_PRICES[a]));
         _accsCache();
       }
       if (cb) cb(accsOwned);
@@ -209,16 +203,17 @@ function netAccsStatus(cb) {
     .catch(() => { if (cb) cb(accsOwned); });
 }
 
-// Купить аксессуар за Stars; onDone — когда покупка подтверждена
+// Купить аксессуар за Stars; onDone — когда покупка подтверждена.
+// granted:true — VIP получил бесплатно по явному нажатию.
 function netBuyAcc(accId, onDone) {
   fetch(API_BASE + '/invoice', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: netClientId(), product: 'acc', item: accId }),
+    body: JSON.stringify({ id: netClientId(), product: 'acc', item: accId, initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => {
-      if (d && d.err === 'already unlocked') { accsOwned.add(accId); _accsCache(); if (onDone) onDone(); return; }
+      if (d && (d.err === 'already unlocked' || d.granted)) { accsOwned.add(accId); _accsCache(); if (onDone) onDone(); return; }
       if (!d || !d.link) { toast('Не удалось создать счёт — попробуй позже.'); return; }
       if (IS_TMA && TG && TG.openInvoice) {
         TG.openInvoice(d.link, status => {
@@ -249,10 +244,7 @@ function netMongenStatus(cb) {
   fetch(API_BASE + '/mongen', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: netClientId(),
-      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
-    }),
+    body: JSON.stringify({ id: netClientId(), initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => cb({ credits: (d && d.credits) | 0, vip: !!(d && d.vip) }))
@@ -264,10 +256,7 @@ function netMongenClaim(cb) {
   fetch(API_BASE + '/mongen/claim', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      id: netClientId(),
-      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
-    }),
+    body: JSON.stringify({ id: netClientId(), initData: tgInitData() }),
   })
     .then(r => r.json())
     .then(d => cb(!!(d && d.ok)))

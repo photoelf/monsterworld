@@ -212,8 +212,14 @@ const DIR_INDEX = { down: 0, up: 1, left: 2, right: 3 };
 
 function updateHUD() {
   checkAchievements();
-  // кнопка рыбалки появляется только после покупки удочки
-  document.getElementById('t-fish').classList.toggle('hidden', !G.bag.rod);
+  // кнопка рыбалки — только с удочкой И когда рядом вода
+  document.getElementById('t-fish').classList.toggle('hidden', !(G.bag.rod && waterNearby()));
+  // кнопка бега отражает доступный маунт: 🛴 самокат / 🐎 братан / 🏃 просто бег
+  const runBtn = document.getElementById('t-run');
+  if (runBtn) {
+    const lm = landMountKind();
+    runBtn.textContent = lm === 'scooter' ? '🛴' : lm === 'brother' ? '🐎' : '🏃';
+  }
   const s = document.getElementById('hud-stats');
   const px = Math.floor(G.player.x), py = Math.floor(G.player.y);
   s.innerHTML = '🔮 <b>' + G.orbs + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
@@ -511,16 +517,36 @@ function canSurf() {
   return G.party.some(m => m.hp > 0 && monType(m) === 'water' && m.level >= 15);
 }
 
+// Есть ли вода в соседнем тайле (для кнопки рыбалки)
+function waterNearby() {
+  const px = Math.floor(G.player.x), py = Math.floor(G.player.y);
+  return [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]]
+    .some(([x, y]) => World.tileAt(x, y) === T.WATER);
+}
+
+// Какой наземный маунт доступен ПОТЕНЦИАЛЬНО (для иконки кнопки бега),
+// без учёта того, нажато ли ускорение: 'scooter' | 'brother' | null
+function landMountKind() {
+  if (World.tileAt(Math.floor(G.player.x), Math.floor(G.player.y)) === T.WATER) return null;
+  if (scootUnlocked && G.scootOn) return 'scooter';
+  const lead = G.party.find(m => m.hp > 0);
+  if (lead && lead.stage >= 2) return 'brother';
+  return null;
+}
+
 // Активный маунт под игроком (или null). Определяет и скорость, и что рисуем:
-//  water   — плывём на водном братишке (существующее плавание + визуал качки)
-//  scooter — премиум-самокат на суше (быстрее всех); нужен куплен и включён
-//  brother — верхом на лидере-братане (3-я стадия) на суше, ×1.5
+//  water   — плывём на водном братишке (пассивно, по факту нахождения на воде)
+//  scooter — премиум-самокат на суше ×1.8; нужен куплен, включён И нажато ускорение
+//  brother — верхом на лидере-братане (3-я стадия) на суше ×1.5, при ускорении
+// Наземный маунт активируется только вместе с бегом (клавиша Shift / кнопка бега):
+// пешком идёшь сам, нажал ускорение — едешь на маунте (если есть).
 function activeMount() {
   const p = G.player;
   if (World.tileAt(Math.floor(p.x), Math.floor(p.y)) === T.WATER) {
     const w = G.party.find(m => m.hp > 0 && monType(m) === 'water' && m.level >= 15);
     return w ? { kind: 'water', mon: w, mult: 1 } : null;
   }
+  if (!keys.has('Shift')) return null;  // на суше маунт только при включённом ускорении
   if (scootUnlocked && G.scootOn) return { kind: 'scooter', mult: 1.8 };
   const lead = G.party.find(m => m.hp > 0);
   if (lead && lead.stage >= 2) return { kind: 'brother', mon: lead, mult: 1.5 };
@@ -2316,7 +2342,7 @@ function renderSettings() {
   if (scootUnlocked) {
     scootBtn.style.display = '';
     scootBtn.textContent = G.scootOn ? '🛴 Самокат: вкл' : '🛴 Самокат: выкл';
-    scootBtn.onclick = () => { G.scootOn = !G.scootOn; saveGame(); renderSettings(); };
+    scootBtn.onclick = () => { G.scootOn = !G.scootOn; saveGame(); updateHUD(); renderSettings(); };
   } else {
     scootBtn.style.display = 'none';
   }
