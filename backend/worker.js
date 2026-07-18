@@ -22,9 +22,10 @@ const PRODUCTS = {
          title: 'Свои спрайты братвы',
          desc: 'Загружай собственные PNG-облики для своих братишек. Навсегда.',
          thanks: '⭐ Спасибо за поддержку Карманной Братвы! Загрузка своих спрайтов открыта — вернись в игру и обнови её.' },
+  // wrd оставлен для гранфазеринга старых покупок (15⭐ за всё): новые счета не выписываем
   wrd: { once: true,  price: WARDROBE_PRICE_STARS, key: id => 'wrd:' + id,
          title: 'Гардероб игрока',
-         desc: 'Перекраски футболки и волос + аксессуары: кепка, очки, корона. Навсегда.',
+         desc: 'Перекраски + аксессуары. Навсегда.',
          thanks: '⭐ Спасибо! Гардероб открыт — вернись в игру и приоденься.' },
   mon: { once: false, price: MONGEN_PRICE_STARS,   key: id => 'mon:' + id,
          title: 'Заказной братишка',
@@ -50,6 +51,10 @@ const json = (data, status = 200) =>
 
 const TYPES = ['normal', 'fire', 'water', 'grass', 'electric', 'ice', 'psychic', 'shadow'];
 const PALETTES = ['ruby', 'ocean', 'forest', 'gold', 'violet', 'ice', 'shadow', 'rose'];
+
+// Аксессуары гардероба: поштучно, 1–5 Stars (цены синхронно с ACC_PRICES в net.js)
+const ACC_PRICES = { cap: 1, glasses: 2, crown: 5 };
+const ACC_NAMES = { cap: 'Кепка', glasses: 'Очки', crown: 'Корона' };
 
 function sanitizeNick(nick) {
   const s = String(nick || '').replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 20);
@@ -178,13 +183,29 @@ export default {
       return json({ snap: null });
     }
 
-    // --- счёт на покупку (Telegram Stars); product: spr|wrd|mon ---
+    // --- счёт на покупку (Telegram Stars); product: spr|mon|acc (+item) ---
     if (url.pathname === '/invoice' && req.method === 'POST') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.id);
       if (id.length < 8) return json({ err: 'bad id' }, 400);
+      // аксессуар гардероба — поштучный товар со своей ценой
+      if (body.product === 'acc') {
+        const item = String(body.item || '');
+        if (!ACC_PRICES[item]) return json({ err: 'bad item' }, 400);
+        const owned = JSON.parse(await env.SNAPS.get('accs:' + id) || '[]');
+        if (owned.includes(item) || await env.SNAPS.get('wrd:' + id)) return json({ err: 'already unlocked' }, 409);
+        const r = await tgApi(env, 'createInvoiceLink', {
+          title: 'Аксессуар: ' + ACC_NAMES[item],
+          description: 'Аксессуар гардероба «' + ACC_NAMES[item] + '». Навсегда.',
+          payload: 'acc:' + item + ':' + id,
+          currency: 'XTR',
+          prices: [{ label: ACC_NAMES[item], amount: ACC_PRICES[item] }],
+        });
+        if (!r.ok) return json({ err: 'tg error' }, 502);
+        return json({ link: r.result, price: ACC_PRICES[item] });
+      }
       const prod = PRODUCTS[body.product] ? body.product : 'spr';
       const p = PRODUCTS[prod];
       if (p.once && await env.SNAPS.get(p.key(id))) return json({ err: 'already unlocked' }, 409);
@@ -224,6 +245,23 @@ export default {
         }
       }
       return json({ unlocked: false });
+    }
+
+    // --- гардероб: какие аксессуары куплены; VIP и старый wrd-анлок — все ---
+    if (url.pathname === '/accs' && req.method === 'POST') {
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.id);
+      if (id.length < 8) return json({ owned: [] });
+      const all = Object.keys(ACC_PRICES);
+      if (await env.SNAPS.get('wrd:' + id)) return json({ owned: all });
+      if (body.initData) {
+        const user = await verifyInitData(env, body.initData);
+        if (user && user.id && await env.SNAPS.get('vip:' + user.id)) return json({ owned: all, vip: true });
+      }
+      let owned = [];
+      try { owned = JSON.parse(await env.SNAPS.get('accs:' + id) || '[]'); } catch (e) {}
+      return json({ owned: owned.filter(a => all.includes(a)) });
     }
 
     // --- генератор: сколько оплаченных генераций; VIP — без ограничений ---
@@ -296,8 +334,23 @@ export default {
       const msg = upd.message;
       if (msg && msg.successful_payment) {
         const payload = String(msg.successful_payment.invoice_payload || '');
-        const m = payload.match(/^(spr|wrd|mon):(.+)$/);
         let thanks = '⭐ Спасибо за поддержку Карманной Братвы!';
+        const acc = payload.match(/^acc:([a-z]+):(.+)$/);
+        if (acc && ACC_PRICES[acc[1]]) {
+          const id = cleanId(acc[2]);
+          if (id.length >= 8) {
+            let owned = [];
+            try { owned = JSON.parse(await env.SNAPS.get('accs:' + id) || '[]'); } catch (e) {}
+            if (!owned.includes(acc[1])) owned.push(acc[1]);
+            await env.SNAPS.put('accs:' + id, JSON.stringify(owned));
+          }
+          await tgApi(env, 'sendMessage', {
+            chat_id: msg.chat.id,
+            text: '⭐ Спасибо! «' + ACC_NAMES[acc[1]] + '» теперь в твоём гардеробе — вернись в игру и надень.',
+          });
+          return new Response('ok');
+        }
+        const m = payload.match(/^(spr|wrd|mon):(.+)$/);
         if (m) {
           const p = PRODUCTS[m[1]];
           const id = cleanId(m[2]);

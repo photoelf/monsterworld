@@ -141,35 +141,73 @@ function netBuyProduct(product, checkFn, onDone) {
 
 function netBuySpriteUnlock(onDone) { netBuyProduct('spr', netCheckUnlock, onDone); }
 
-// ===== Гардероб игрока (перекраски + аксессуары, Telegram Stars) =====
+// ===== Аксессуары гардероба (поштучно, 1–5 Stars) =====
+// Перекраски бесплатны; цены синхронно с воркером (ACC_PRICES там же)
 
-const WARDROBE_PRICE = 15;   // держать в синхроне с воркером (WARDROBE_PRICE_STARS)
-let wrdUnlocked = false;
-try { wrdUnlocked = localStorage.getItem('mw-wrd-unlocked') === '1'; } catch (e) {}
+const ACC_PRICES = { cap: 1, glasses: 2, crown: 5 };
 
-function netCheckWardrobe(cb) {
-  if (wrdUnlocked || !API_BASE) { if (cb) cb(wrdUnlocked); return; }
-  fetch(API_BASE + '/unlock', {
+// Кэш купленных аксессуаров (+ гранфазеринг старого гардероба за 15⭐)
+let accsOwned = new Set();
+try {
+  accsOwned = new Set(JSON.parse(localStorage.getItem('mw-accs') || '[]'));
+  if (localStorage.getItem('mw-wrd-unlocked') === '1') for (const a of Object.keys(ACC_PRICES)) accsOwned.add(a);
+} catch (e) {}
+
+function _accsCache() {
+  try { localStorage.setItem('mw-accs', JSON.stringify([...accsOwned])); } catch (e) {}
+}
+
+// Обновить список купленных с сервера; cb(accsOwned)
+function netAccsStatus(cb) {
+  if (!API_BASE) { if (cb) cb(accsOwned); return; }
+  fetch(API_BASE + '/accs', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
       id: netClientId(),
-      product: 'wrd',
       initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
     }),
   })
     .then(r => r.json())
     .then(d => {
-      if (d && d.unlocked) {
-        wrdUnlocked = true;
-        try { localStorage.setItem('mw-wrd-unlocked', '1'); } catch (e) {}
+      if (d && Array.isArray(d.owned)) {
+        for (const a of d.owned) accsOwned.add(a);
+        _accsCache();
       }
-      if (cb) cb(wrdUnlocked);
+      if (cb) cb(accsOwned);
     })
-    .catch(() => { if (cb) cb(wrdUnlocked); });
+    .catch(() => { if (cb) cb(accsOwned); });
 }
 
-function netBuyWardrobe(onDone) { netBuyProduct('wrd', netCheckWardrobe, onDone); }
+// Купить аксессуар за Stars; onDone — когда покупка подтверждена
+function netBuyAcc(accId, onDone) {
+  fetch(API_BASE + '/invoice', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: netClientId(), product: 'acc', item: accId }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d && d.err === 'already unlocked') { accsOwned.add(accId); _accsCache(); if (onDone) onDone(); return; }
+      if (!d || !d.link) { toast('Не удалось создать счёт — попробуй позже.'); return; }
+      if (IS_TMA && TG && TG.openInvoice) {
+        TG.openInvoice(d.link, status => {
+          if (status !== 'paid') return;
+          toast('⭐ Спасибо! Подтверждаем оплату...');
+          let tries = 0;
+          const poll = () => netAccsStatus(owned => {
+            if (owned.has(accId)) { if (onDone) onDone(); }
+            else if (++tries < 12) setTimeout(poll, 1500);
+            else toast('Оплата прошла, но подтверждение задерживается — перезайди в игру.');
+          });
+          setTimeout(poll, 1200);
+        });
+      } else {
+        window.open(d.link, '_blank');
+      }
+    })
+    .catch(() => toast('Сеть недоступна — попробуй позже.'));
+}
 
 // ===== Генератор заказных братишек (Telegram Stars, кредиты) =====
 

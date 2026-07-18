@@ -1725,8 +1725,8 @@ function renderShop() {
   if (_shopCat === 'donate') {
     shopSpecialRow(rows, '✨ Заказной братишка', 'Уникальный шайни-братишка: твой тип, окрас и имя. 3 стадии.',
       MONGEN_PRICE + '⭐', 'Открыть', () => openMongen());
-    shopSpecialRow(rows, '👕 Гардероб', 'Перекраски футболки, волос и кожи + аксессуары. Навсегда.',
-      wrdUnlocked ? '<span style="opacity:.7">куплено</span>' : WARDROBE_PRICE + '⭐', 'Открыть', () => openWardrobe());
+    shopSpecialRow(rows, '👕 Гардероб', 'Перекраски футболки, волос и кожи — бесплатно. Аксессуары — поштучно, навсегда.',
+      'аксессуары 1–5⭐', 'Открыть', () => openWardrobe());
     shopSpecialRow(rows, '🖼 Свои спрайты', 'Загружай собственные PNG-облики братишек — кнопка на экране братишки.',
       sprUnlocked ? '<span style="opacity:.7">куплено</span>' : SPRITE_PRICE + '⭐', 'К братве', () => { closeShop(); togglePartyPanel(); });
     return;
@@ -2230,7 +2230,7 @@ function openWardrobe() {
   _wrdDraft = Object.assign({}, DEFAULT_OUTFIT, G.outfit || {});
   renderWardrobe();
   document.getElementById('wardrobe-panel').classList.remove('hidden');
-  netCheckWardrobe(ok => { if (ok && G.state === 'wardrobe') renderWardrobe(); });
+  netAccsStatus(() => { if (G.state === 'wardrobe') renderWardrobe(); });
 }
 
 function closeWardrobe() {
@@ -2261,42 +2261,34 @@ function renderWardrobe() {
   swatchRow('wrd-hairs', OUTFIT_HAIRS, 'hair');
   swatchRow('wrd-skins', OUTFIT_SKINS, 'skin');
 
+  // аксессуары: поштучно за Stars (цвета бесплатны для всех)
   const accEl = document.getElementById('wrd-accs');
   accEl.innerHTML = '';
   const accs = [[null, '— без —']].concat(Object.entries(OUTFIT_ACCS).map(([k, a]) => [k, a.name]));
   for (const [k, label] of accs) {
     const b = document.createElement('button');
-    b.textContent = label;
+    const owned = !k || accsOwned.has(k);
+    b.textContent = owned ? label : '🔒 ' + label + ' · ' + ACC_PRICES[k] + '⭐';
     if (_wrdDraft.acc === k) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
-    b.onclick = () => { _wrdDraft.acc = k; renderWardrobe(); };
+    if (!owned) b.style.opacity = '.75';
+    b.onclick = () => {
+      if (owned) { _wrdDraft.acc = k; renderWardrobe(); return; }
+      if (IS_TMA) netBuyAcc(k, () => { toast('⭐ «' + OUTFIT_ACCS[k].name.replace(/^\S+ /, '') + '» твоя навсегда!'); _wrdDraft.acc = k; renderWardrobe(); });
+      else toast('Аксессуары покупаются в Telegram: @poketmons_bot');
+    };
     accEl.appendChild(b);
   }
 
-  // применить / купить
-  const buyBox = document.getElementById('wrd-buy');
   const applyBtn = document.getElementById('wrd-apply');
-  if (wrdUnlocked) {
-    buyBox.classList.add('hidden');
-    applyBtn.disabled = false;
-    applyBtn.onclick = () => {
-      G.outfit = Object.assign({}, _wrdDraft);
-      applyOutfit();
-      saveGame();
-      toast('👕 Новый образ принят!');
-      closeWardrobe();
-    };
-  } else {
-    buyBox.classList.remove('hidden');
-    applyBtn.disabled = true;
-    const btn = document.getElementById('wrd-buy-btn');
-    if (IS_TMA) {
-      btn.textContent = '⭐ Купить за ' + WARDROBE_PRICE + ' Stars';
-      btn.onclick = () => netBuyWardrobe(() => { toast('👕 Гардероб открыт!'); renderWardrobe(); });
-    } else {
-      btn.textContent = 'Покупка — в Telegram: @poketmons_bot';
-      btn.onclick = () => toast('Открой игру в Telegram, чтобы купить.');
-    }
-  }
+  applyBtn.disabled = false;
+  applyBtn.onclick = () => {
+    if (_wrdDraft.acc && !accsOwned.has(_wrdDraft.acc)) _wrdDraft.acc = null; // страховка
+    G.outfit = Object.assign({}, _wrdDraft);
+    applyOutfit();
+    saveGame();
+    toast('👕 Новый образ принят!');
+    closeWardrobe();
+  };
 }
 
 // ===== Генератор заказных братишек (за Stars) =====
