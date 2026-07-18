@@ -165,12 +165,21 @@ async function buyerKey(env, body) {
 // clientId (браузер) должен быть достаточно длинным; tg-ключ валиден всегда
 function badBuyer(b) { return b.tg === null && b.key.length < 8; }
 
-async function rateLimited(env, ip) {
-  const key = 'rl:' + ip + ':' + Math.floor(Date.now() / 60000);
-  const n = parseInt(await env.SNAPS.get(key) || '0', 10);
-  if (n >= 30) return true;
-  await env.SNAPS.put(key, String(n + 1), { expirationTtl: 120 });
-  return false;
+// Рейт-лимит в памяти изолята. Раньше счётчики жили в KV и каждая проверка
+// стоила чтение+ЗАПИСЬ — ~700 из 800 записей/день, упирались в лимит 1000.
+// Изоляты не разделяют память между PoP и могут пересоздаваться, так что
+// лимит «мягкий» (распределённый абьюз пробьёт больше 30 req/min), но от
+// спама и кривых клиентских циклов защищает, а KV не трогает вовсе.
+const RL = new Map(); // ip → { min, n }
+function rateLimited(env, ip) {
+  const min = Math.floor(Date.now() / 60000);
+  const e = RL.get(ip);
+  if (!e || e.min !== min) {
+    if (RL.size > 5000) RL.clear();
+    RL.set(ip, { min, n: 1 });
+    return false;
+  }
+  return ++e.n > 30;
 }
 
 export default {
@@ -221,11 +230,19 @@ export default {
         };
         let lb = [];
         try { lb = JSON.parse(await env.SNAPS.get(LB_KEY)) || []; } catch (e) {}
-        lb = lb.filter(e => e && e.tg !== entry.tg);
-        lb.push(entry);
-        lb.sort((a, b) => b.power - a.power);
-        if (lb.length > LB_CAP) lb.length = LB_CAP;
-        await env.SNAPS.put(LB_KEY, JSON.stringify(lb));
+        const prev = lb.find(e => e && e.tg === entry.tg);
+        const same = prev && prev.nick === entry.nick && prev.power === entry.power
+          && prev.badges === entry.badges && prev.dex === entry.dex;
+        // не переписываем lb, если строка игрока не изменилась (ts не в счёт)
+        // или новичок всё равно не проходит в заполненный топ — экономия KV-записей
+        const below = !prev && lb.length >= LB_CAP && entry.power <= lb[lb.length - 1].power;
+        if (!same && !below) {
+          lb = lb.filter(e => e && e.tg !== entry.tg);
+          lb.push(entry);
+          lb.sort((a, b) => b.power - a.power);
+          if (lb.length > LB_CAP) lb.length = LB_CAP;
+          await env.SNAPS.put(LB_KEY, JSON.stringify(lb));
+        }
       }
       return json({ ok: true, pool: idx.length });
     }
