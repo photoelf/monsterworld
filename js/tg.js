@@ -12,6 +12,10 @@ function initTelegram() {
   IS_TMA = !!(TG && TG.initData);
   if (!IS_TMA) return;
 
+  // внутри Telegram окно телефонных пропорций на любой платформе —
+  // всегда мобильный вид (кроме явного форса ?desktop)
+  if (!IS_MOBILE && !/[?&]desktop/.test(location.search)) IS_MOBILE = true;
+
   TG.ready();
   TG.expand();
   try { TG.setHeaderColor('#0d0d14'); TG.setBackgroundColor('#0d0d14'); } catch (e) {}

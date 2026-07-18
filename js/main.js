@@ -1460,6 +1460,29 @@ function resizeCanvas() {
   if (G.state === 'world' || G.state === 'party') render();
 }
 
+// Десктоп: масштабируем игру под окно (960px → до 3x), пиксели остаются чёткими
+function applyDesktopZoom() {
+  if (IS_MOBILE) return;
+  const k = clamp(Math.min(window.innerWidth / 980, window.innerHeight / 660), 1, 3);
+  const w = Math.round(960 * k) + 'px';
+  document.getElementById('wrap').style.width = w;
+  canvas.style.width = w;
+}
+
+function initDesktopFullscreen() {
+  if (IS_MOBILE) return;
+  const btn = document.getElementById('fs-btn');
+  btn.style.display = 'block';
+  const toggle = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
+  };
+  btn.onclick = toggle;
+  applyDesktopZoom();
+  window.addEventListener('resize', applyDesktopZoom);
+  document.addEventListener('fullscreenchange', applyDesktopZoom);
+}
+
 function render() {
   if (!tileAtlas) return;
   ctx.imageSmoothingEnabled = false;
@@ -2540,13 +2563,13 @@ function initTitle() {
 
 // ===== Тач-управление =====
 
-const IS_MOBILE = /[?&]desktop/.test(location.search) ? false :
-                  /[?&]mobile/.test(location.search) ? true :
-                  // внутри Telegram (в т.ч. Desktop) окно узкое телефонное — всегда мобильный вид;
-                  // hash tgWebApp* есть с самого старта, ещё до загрузки SDK
-                  /tgWebApp/i.test(location.hash) ||
-                  'ontouchstart' in window || navigator.maxTouchPoints > 0 ||
-                  (window.matchMedia && matchMedia('(pointer: coarse)').matches);
+// let — внутри Telegram initTelegram() дожимает в true уже по данным SDK
+// (hash-признак не всегда доживает до нас во всех клиентах Telegram)
+let IS_MOBILE = /[?&]desktop/.test(location.search) ? false :
+                /[?&]mobile/.test(location.search) ? true :
+                /tgWebApp/i.test(location.hash) || /tgWebApp/i.test(location.search) ||
+                'ontouchstart' in window || navigator.maxTouchPoints > 0 ||
+                (window.matchMedia && matchMedia('(pointer: coarse)').matches);
 
 // Вектор виртуального джойстика; step() читает его напрямую
 const joy = { x: 0, y: 0 };
@@ -2621,6 +2644,7 @@ function main() {
   initInput();
   initTitle();
   initTouch();
+  initDesktopFullscreen();
   updateHUD();
   netFetchRival();   // предзагрузка «живого» соперника
   netCheckUnlock();  // куплена ли загрузка спрайтов (кэшируется локально)

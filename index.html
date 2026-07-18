@@ -104,6 +104,14 @@
     background: #111; color: var(--ui-text);
     border: 2px solid var(--ui-border); border-radius: 4px; padding: 7px 10px; width: 220px;
   }
+  /* кнопка фулскрина (только десктопный режим) */
+  #fs-btn {
+    position: fixed; right: 14px; bottom: 14px; z-index: 70;
+    display: none; cursor: pointer; user-select: none;
+    background: rgba(38,38,54,.85); border: 2px solid var(--ui-border); border-radius: 8px;
+    font-size: 20px; padding: 5px 11px; color: var(--ui-text);
+  }
+  #fs-btn:hover { border-color: var(--ui-accent); color: var(--ui-accent); }
   /* ---------- Титульный экран ---------- */
   #title { padding: 0 20px; }
   #title-logo {
@@ -556,6 +564,9 @@
     <div id="storage-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px;"></div>
     <button id="btn-storage-close">Закрыть (B)</button>
   </div>
+
+  <!-- Фулскрин (десктоп) -->
+  <div id="fs-btn" title="На весь экран">⛶</div>
 
   <!-- Тач-управление -->
   <div id="touch-ui" class="hidden">
