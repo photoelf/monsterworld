@@ -247,6 +247,18 @@ function toast(text) {
   toastTimer = setTimeout(() => { t.style.opacity = 0; }, 2200);
 }
 
+// Дозированный обучающий хинт: показывается не более maxShow раз за игру,
+// потом молчит (игрок уже усвоил). Счётчик показов живёт в сейве (G.hints).
+function hint(id, text, maxShow) {
+  maxShow = maxShow || 3;
+  if (!G.hints) G.hints = {};
+  const n = G.hints[id] || 0;
+  if (n >= maxShow) return;
+  G.hints[id] = n + 1;
+  toast(text);
+  saveGame();
+}
+
 // ===== Сохранение =====
 
 // Кастомный спрайт валиден, если это небольшой PNG data-URL
@@ -327,6 +339,7 @@ function buildSaveData() {
     picked: [...G.picked],
     outfit: G.outfit,
     scootOn: G.scootOn,
+    hints: G.hints,
   };
 }
 
@@ -336,35 +349,8 @@ function saveGame() {
   cloudSaveSoon(); // в Telegram — отложенная заливка в CloudStorage
 }
 
-// ===== Сейвскам: быстрый слот сохранения/отката =====
-
-const QUICK_KEY = 'mw-quicksave';
-
-// Тихий быстросейв (авто перед боем, если куплен и включён режим сейвскамера)
-function autoQuickSave() {
-  if (!SCUM_ON || !scumUnlocked) return;
-  try { localStorage.setItem(QUICK_KEY, JSON.stringify(buildSaveData())); } catch (e) {}
-}
-
-function quickSave() {
-  try { localStorage.setItem(QUICK_KEY, JSON.stringify(buildSaveData())); } catch (e) {}
-  toast('💾 Быстрое сохранение готово.');
-}
-
-// Откат к быстрослоту. Работает только в мире (не рвём асинхронный бой)
-function quickLoad() {
-  if (G.state === 'battle') { toast('Откат доступен только вне боя.'); return; }
-  let raw = null;
-  try { raw = localStorage.getItem(QUICK_KEY); } catch (e) {}
-  if (!raw) { toast('Нет быстрого сохранения.'); return; }
-  try { localStorage.setItem(SAVE_KEY, raw); } catch (e) {}
-  if (loadGame()) {
-    document.getElementById('settings-panel').classList.add('hidden');
-    G.state = 'world';
-    updateHUD();
-    toast('⏪ Откат к быстрому сохранению!');
-  }
-}
+// Сейвскам работает только ВНУТРИ боя (Battle.battleSave/battleReload) —
+// эмуляторный сейв-стейт перед ударом; вне боя откат намеренно не даём.
 
 // Код сейва: JSON -> base64 (безопасно для юникода)
 function exportSaveCode() {
@@ -429,6 +415,7 @@ function loadGame() {
   G.outfit = Object.assign({}, DEFAULT_OUTFIT, data.outfit || {});
   applyOutfit();
   G.scootOn = data.scootOn !== false;   // включён по умолчанию (если куплен)
+  G.hints = data.hints || {};
   resetFollower();
   return true;
 }
@@ -481,6 +468,7 @@ function newWorld(seedText) {
   G.outfit = Object.assign({}, DEFAULT_OUTFIT);
   applyOutfit();
   G.scootOn = true;
+  G.hints = {};
   G.spawn = findSpawn();
   G.player.x = G.spawn.x; G.player.y = G.spawn.y;
   resetFollower();
@@ -632,7 +620,6 @@ function collides(x, y) {
 async function startTrainerBattle(tr) {
   if (G.state !== 'world') return;
   G.state = 'battle';
-  autoQuickSave();  // сейвскам: точка отката перед боем
   let team = World.trainerTeam(tr);
   let name = tr.name;
   // «живой» соперник: реальная команда другого игрока (уровни подогнаны под местность)
@@ -662,7 +649,6 @@ async function startTrainerBattle(tr) {
 async function startArenaBattle(master) {
   if (G.state !== 'world') return;
   G.state = 'battle';
-  autoQuickSave();  // сейвскам: точка отката перед боем
   const team = World.masterTeam(master);
   const result = await Battle.run({
     kind: 'trainer', foe: 'master', enemyParty: team, trainerName: master.name,
@@ -680,7 +666,6 @@ async function startArenaBattle(master) {
 // mode: undefined | 'nest' | 'fish' | 'shrine'
 async function startWildBattle(x, y, mode) {
   G.state = 'battle';
-  autoQuickSave();  // сейвскам: точка отката перед боем
   const rng = mulberry32((Math.random() * 4294967296) >>> 0);
   const env = {
     night: G.phase === 'night',
@@ -715,7 +700,6 @@ async function startWildBattle(x, y, mode) {
 async function startTowerRun(tw) {
   if (G.state !== 'world') return;
   G.state = 'battle';
-  autoQuickSave();  // сейвскам: точка отката перед боем
   let floor = 1, result;
   while (true) {
     const team = World.towerTeam(tw, floor);
@@ -1457,7 +1441,7 @@ function closeBoard() {
 
 function tryFishing() {
   if (G.state !== 'world') return;
-  if (!G.bag.rod) { toast('🎣 Нужна удочка — продаётся в лавке.'); return; }
+  if (!G.bag.rod) { hint('rod', '🎣 Нужна удочка — продаётся в лавке.'); return; }
   const px = Math.floor(G.player.x), py = Math.floor(G.player.y);
   const spots = [[px + 1, py], [px - 1, py], [px, py + 1], [px, py - 1]];
   const water = spots.find(([x, y]) => World.tileAt(x, y) === T.WATER);
@@ -1572,7 +1556,7 @@ function step(dt) {
         openBoard(hit.tx, hit.ty);
       } else if (bumpTile === T.WATER && !canSurf()) {
         G.bumpCooldown = 2.5;
-        toast('🌊 Нужен водный братишка 15+ уровня, чтобы плыть.');
+        hint('surf', '🌊 Нужен водный братишка 15+ уровня, чтобы плыть.');
       }
     }
 
@@ -2380,19 +2364,17 @@ function renderSettings() {
   } else {
     joyBtn.style.display = 'none';
   }
-  // режим сейвскамера: премиум за Stars; куплен — тумблер + быстросейв/откат
+  // режим сейвскамера: премиум за Stars; куплен — тумблер (сейв/откат в самом бою)
   const scumBtn = document.getElementById('set-scum');
   if (scumUnlocked) {
     scumBtn.textContent = SCUM_ON ? '💾 Сейвскам: вкл' : '💾 Сейвскам: выкл';
-    scumBtn.onclick = () => { setScum(!SCUM_ON); if (SCUM_ON) autoQuickSave(); renderSettings(); };
-    document.getElementById('set-scum-actions').style.display = SCUM_ON ? 'flex' : 'none';
+    scumBtn.onclick = () => { setScum(!SCUM_ON); renderSettings(); };
   } else {
     scumBtn.textContent = '🔒 Сейвскам · ' + SCUM_PRICE + '⭐';
     scumBtn.onclick = () => {
       if (IS_TMA) netBuyScum(() => { toast('💾 Режим сейвскамера открыт!'); renderSettings(); });
       else toast('Покупка за Stars — в Telegram: @poketmons_bot');
     };
-    document.getElementById('set-scum-actions').style.display = 'none';
   }
 
   // тумблер электросамоката — только у купивших
@@ -3182,8 +3164,6 @@ function initTitle() {
   document.getElementById('btn-map-close').onclick = () => toggleMap();
   document.getElementById('btn-ach-close').onclick = () => toggleAchievements();
   document.getElementById('btn-settings-close').onclick = () => toggleSettings();
-  document.getElementById('set-quicksave').onclick = () => quickSave();
-  document.getElementById('set-quickload').onclick = () => quickLoad();
   document.getElementById('bt-save').onclick = () => Battle.battleSave();
   document.getElementById('bt-load').onclick = () => Battle.battleReload();
   document.getElementById('set-wardrobe').onclick = () => openWardrobe();
