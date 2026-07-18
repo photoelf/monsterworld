@@ -2542,6 +2542,9 @@ function initTitle() {
 
 const IS_MOBILE = /[?&]desktop/.test(location.search) ? false :
                   /[?&]mobile/.test(location.search) ? true :
+                  // внутри Telegram (в т.ч. Desktop) окно узкое телефонное — всегда мобильный вид;
+                  // hash tgWebApp* есть с самого старта, ещё до загрузки SDK
+                  /tgWebApp/i.test(location.hash) ||
                   'ontouchstart' in window || navigator.maxTouchPoints > 0 ||
                   (window.matchMedia && matchMedia('(pointer: coarse)').matches);
 
