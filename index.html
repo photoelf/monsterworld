@@ -326,6 +326,10 @@
   }
   body.mobile h1 { font-size: 20px; }
   body.mobile button { min-height: 44px; font-size: 15px; }
+  /* кнопка «Закрыть» наверху длинных списков — липнет к верху при прокрутке */
+  body.mobile .close-top {
+    position: sticky; top: 0; z-index: 6; margin-bottom: 4px;
+  }
   /* контейнеры списков — во всю ширину, без горизонтального скролла */
   body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
   body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
@@ -447,9 +451,9 @@
   <!-- Братопедия -->
   <div id="dex-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Братопедия</h1>
+    <button id="btn-dex-close" class="close-top">Закрыть (P)</button>
     <div id="dex-count" style="opacity:.85;"></div>
     <div id="dex-grid"></div>
-    <button id="btn-dex-close">Закрыть (P)</button>
   </div>
 
   <!-- Карта -->
@@ -531,9 +535,9 @@
   <!-- Достижения -->
   <div id="ach-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Достижения</h1>
+    <button id="btn-ach-close" class="close-top">Закрыть (O)</button>
     <div id="ach-count" style="opacity:.85;"></div>
     <div id="ach-rows" style="display:flex;flex-direction:column;gap:5px;max-height:380px;overflow-y:auto;"></div>
-    <button id="btn-ach-close">Закрыть (O)</button>
   </div>
 
   <!-- Настройки -->
@@ -612,9 +616,9 @@
   <!-- Карман -->
   <div id="storage-panel" class="overlay hidden">
     <h1 style="font-size:20px;">📦 Карман</h1>
+    <button id="btn-storage-close" class="close-top">Закрыть (B)</button>
     <div id="storage-info" style="opacity:.85;"></div>
     <div id="storage-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px;"></div>
-    <button id="btn-storage-close">Закрыть (B)</button>
   </div>
 
   <!-- Тач-управление -->
