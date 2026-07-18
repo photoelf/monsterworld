@@ -320,6 +320,7 @@ function buildSaveData() {
     defeated: [...G.defeated],
     picked: [...G.picked],
     outfit: G.outfit,
+    scootOn: G.scootOn,
   };
 }
 
@@ -335,6 +336,11 @@ function exportSaveCode() {
 }
 
 function importSaveCode(code) {
+  // сейв с большим карманом кастомных спрайтов легитимно крупный, но не
+  // безграничный — режем явно вредоносные мегабайтные вставки до декода
+  if (typeof code !== 'string' || code.length > 4000000) {
+    return 'Код слишком длинный — похоже, это не код сейва.';
+  }
   let data;
   try {
     data = JSON.parse(decodeURIComponent(escape(atob(code.trim()))));
@@ -386,6 +392,7 @@ function loadGame() {
   G.picked = new Set(data.picked || []);
   G.outfit = Object.assign({}, DEFAULT_OUTFIT, data.outfit || {});
   applyOutfit();
+  G.scootOn = data.scootOn !== false;   // включён по умолчанию (если куплен)
   resetFollower();
   return true;
 }
@@ -437,6 +444,7 @@ function newWorld(seedText) {
   G.picked = new Set();
   G.outfit = Object.assign({}, DEFAULT_OUTFIT);
   applyOutfit();
+  G.scootOn = true;
   G.spawn = findSpawn();
   G.player.x = G.spawn.x; G.player.y = G.spawn.y;
   resetFollower();
@@ -501,6 +509,47 @@ function showStarterPick() {
 // Можно ли плавать: живой водный монстрик 15+ уровня
 function canSurf() {
   return G.party.some(m => m.hp > 0 && monType(m) === 'water' && m.level >= 15);
+}
+
+// Активный маунт под игроком (или null). Определяет и скорость, и что рисуем:
+//  water   — плывём на водном братишке (существующее плавание + визуал качки)
+//  scooter — премиум-самокат на суше (быстрее всех); нужен куплен и включён
+//  brother — верхом на лидере-братане (3-я стадия) на суше, ×1.5
+function activeMount() {
+  const p = G.player;
+  if (World.tileAt(Math.floor(p.x), Math.floor(p.y)) === T.WATER) {
+    const w = G.party.find(m => m.hp > 0 && monType(m) === 'water' && m.level >= 15);
+    return w ? { kind: 'water', mon: w, mult: 1 } : null;
+  }
+  if (scootUnlocked && G.scootOn) return { kind: 'scooter', mult: 1.8 };
+  const lead = G.party.find(m => m.hp > 0);
+  if (lead && lead.stage >= 2) return { kind: 'brother', mon: lead, mult: 1.5 };
+  return null;
+}
+
+// Спрайт электросамоката 16×16, смотрит вправо (флип по направлению)
+let _scooterSprite = null;
+function scooterSprite() {
+  if (_scooterSprite) return _scooterSprite;
+  const cv = document.createElement('canvas');
+  cv.width = 16; cv.height = 16;
+  const c = cv.getContext('2d');
+  // колёса
+  c.fillStyle = '#101014';
+  c.fillRect(3, 12, 3, 3); c.fillRect(11, 12, 3, 3);
+  c.fillStyle = '#3a3a44';
+  c.fillRect(4, 13, 1, 1); c.fillRect(12, 13, 1, 1);
+  // дека
+  c.fillStyle = '#c8cdd6';
+  c.fillRect(4, 12, 9, 1);
+  // стойка руля + руль (акцентный, «электрический»)
+  c.fillStyle = '#3fc8e8';
+  c.fillRect(11, 5, 2, 7);
+  c.fillRect(9, 5, 5, 1);
+  c.fillStyle = '#ffd75e';
+  c.fillRect(13, 4, 1, 1); // фара
+  _scooterSprite = cv;
+  return cv;
 }
 
 function collides(x, y) {
@@ -769,7 +818,11 @@ function tradeEncode(payload) {
 }
 
 function tradeDecode(code) {
-  const parts = (code || '').trim().split('.');
+  // лимит длины до дорогого atob/JSON.parse: честный код обмена/PvP с 6
+  // кастомными спрайтами (~12КБ каждый) не превышает ~200КБ; всё крупнее —
+  // вставка-DoS, отбрасываем сразу
+  if (typeof code !== 'string' || code.length > 300000) return null;
+  const parts = code.trim().split('.');
   if (parts.length !== 3 || parts[0] !== 'MWT1') return null;
   let json;
   try { json = decodeURIComponent(escape(atob(parts[1]))); } catch (e) { return null; }
@@ -1396,7 +1449,8 @@ function step(dt) {
   }
 
   const p = G.player;
-  const speed = keys.has('Shift') ? 8.6 : 5.2;  // Shift — бег
+  const mount = activeMount();
+  const speed = (keys.has('Shift') ? 8.6 : 5.2) * (mount ? mount.mult : 1);  // Shift — бег, маунт — множитель
   p.moving = !!(vx || vy);
   if (p.moving) {
     // спрайт смотрит вдоль доминирующей оси (важно для плавного джойстика)
@@ -1613,9 +1667,15 @@ function render() {
     }
   }
 
+  // маунт под игроком (водный братишка / братан-лидер / самокат);
+  // при таком маунте спутник-мон не бежит рядом — он и есть маунт
+  const mount = activeMount();
+  const mountMon = mount && mount.mon;  // water/brother используют мона под игроком
+
   // спутник — первый живой братишка, с подпрыгиванием при ходьбе
+  // (прячем, если этот же братишка сейчас служит маунтом под игроком)
   const leader = G.party.find(m => m.hp > 0);
-  if (leader && G.follower) {
+  if (leader && G.follower && !mountMon) {
     const f = G.follower;
     const spr = monSprite(leader);
     // кастомный спрайт смотрит влево; игрок правее — флипаем, чтобы смотрел на него
@@ -1638,13 +1698,58 @@ function render() {
     }
   }
 
-  // игрок в центре (на воде — круги под ним)
+  // игрок в центре; на маунте приподнят (сидит верхом)
+  const onWater = World.tileAt(Math.floor(p.x), Math.floor(p.y)) === T.WATER;
+  const ride = mount ? 4 : 0;          // насколько приподнять игрока над маунтом
   const psx = Math.round((p.x - camX) * TILE) - 8;
-  const psy = Math.round((p.y - camY) * TILE) - 12;
-  if (World.tileAt(Math.floor(p.x), Math.floor(p.y)) === T.WATER) {
+  const psy = Math.round((p.y - camY) * TILE) - 12 - ride;
+  const cx = Math.round((p.x - camX) * TILE);   // центр игрока по x
+  const groundY = Math.round((p.y - camY) * TILE);
+
+  if (mount) {
+    if (mount.kind === 'water') {
+      // покачивание на волнах + расходящиеся круги
+      const wave = Math.round(Math.sin(G.clock * 3) * 1.5);
+      const spr = monSprite(mount.mon);
+      const dims = monSpriteDims(mount.mon, spr);
+      const sw = dims.w, sh = dims.h;
+      const rippleW = 13 + Math.round(Math.abs(Math.sin(G.clock * 4)) * 4);
+      ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
+      ctx.fillRect(cx - rippleW / 2, groundY + 3, rippleW, 2);
+      const mx = cx - Math.floor(sw / 2);
+      const my = groundY - sh + 7 + wave;
+      // водный братишка смотрит по ходу: влево-спрайт флипаем при движении вправо
+      if (p.dir === 'right' && !(mount.mon.customSprite)) {
+        ctx.drawImage(spr, mx, my, sw, sh);
+      } else if (p.dir === 'right') {
+        ctx.save(); ctx.scale(-1, 1); ctx.drawImage(spr, -mx - sw, my, sw, sh); ctx.restore();
+      } else {
+        ctx.drawImage(spr, mx, my, sw, sh);
+      }
+    } else if (mount.kind === 'brother') {
+      const wave = p.moving ? Math.round(Math.abs(Math.sin(G.clock * 9)) * 2) : 0;
+      const spr = monSprite(mount.mon);
+      const dims = monSpriteDims(mount.mon, spr);
+      const sw = dims.w, sh = dims.h;
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(cx - 5, groundY + 2, 10, 2);
+      ctx.drawImage(spr, cx - Math.floor(sw / 2), groundY - sh + 6 - wave, sw, sh);
+    } else if (mount.kind === 'scooter') {
+      const spr = scooterSprite();
+      ctx.fillStyle = 'rgba(0,0,0,0.25)';
+      ctx.fillRect(cx - 6, groundY + 2, 12, 2);
+      const my = groundY - 12;
+      if (p.dir === 'left') {
+        ctx.save(); ctx.scale(-1, 1); ctx.drawImage(spr, -(cx - 8) - 16, my, 16, 16); ctx.restore();
+      } else {
+        ctx.drawImage(spr, cx - 8, my, 16, 16);
+      }
+    }
+  } else if (onWater) {
+    // на воде без водного маунта (сюда обычно не попадаем — плавать нельзя)
     const rippleW = 12 + Math.round(Math.abs(Math.sin(G.clock * 4)) * 3);
     ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
-    ctx.fillRect(psx + 8 - rippleW / 2, psy + 13, rippleW, 2);
+    ctx.fillRect(psx + 8 - rippleW / 2, psy + 13 + ride, rippleW, 2);
   }
   ctx.drawImage(playerSprite, DIR_INDEX[p.dir] * 16, (p.moving ? p.frame : 0) * 16, 16, 16, psx, psy, 16, 16);
 
@@ -1743,6 +1848,14 @@ function renderShop() {
       'аксессуары 1–5⭐', 'Открыть', () => openWardrobe());
     shopSpecialRow(rows, '🖼 Свои спрайты', 'Загружай собственные PNG-облики братишек — кнопка на экране братишки.',
       sprUnlocked ? '<span style="opacity:.7">куплено</span>' : SPRITE_PRICE + '⭐', 'К братве', () => { closeShop(); togglePartyPanel(); });
+    shopSpecialRow(rows, '🛴 Электросамокат', 'Премиум-маунт: гоняй по суше в 1.8× быстрее. Тумблер в настройках.',
+      scootUnlocked ? '<span style="opacity:.7">куплено</span>' : SCOOT_PRICE + '⭐',
+      scootUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      () => {
+        if (scootUnlocked) { toast('🛴 Самокат уже твой — включи в настройках.'); return; }
+        if (IS_TMA) netBuyScoot(() => { toast('🛴 Электросамокат твой! Включи в настройках.'); renderShop(); });
+        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
+      });
     return;
   }
 
@@ -2198,6 +2311,15 @@ function renderSettings() {
     sfx('pickup'); // слышно сразу, что звук вернулся (при выкл — тишина)
     renderSettings();
   };
+  // тумблер электросамоката — только у купивших
+  const scootBtn = document.getElementById('set-scooter');
+  if (scootUnlocked) {
+    scootBtn.style.display = '';
+    scootBtn.textContent = G.scootOn ? '🛴 Самокат: вкл' : '🛴 Самокат: выкл';
+    scootBtn.onclick = () => { G.scootOn = !G.scootOn; saveGame(); renderSettings(); };
+  } else {
+    scootBtn.style.display = 'none';
+  }
   const urlForce = /[?&](desktop|mobile)/.test(location.search);
   const note = document.getElementById('set-mode-note');
   note.textContent = urlForce
@@ -3031,6 +3153,7 @@ function main() {
   updateHUD();
   netFetchRival();   // предзагрузка «живого» соперника
   netCheckUnlock();  // куплена ли загрузка спрайтов (кэшируется локально)
+  netCheckScoot();   // куплен ли электросамокат
 
   // PWA: офлайн-кэш (только по http/https — с file:// SW не работает)
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

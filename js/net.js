@@ -141,6 +141,36 @@ function netBuyProduct(product, checkFn, onDone) {
 
 function netBuySpriteUnlock(onDone) { netBuyProduct('spr', netCheckUnlock, onDone); }
 
+// ===== Электросамокат (премиум-маунт, Telegram Stars) =====
+
+const SCOOT_PRICE = 50;   // держать в синхроне с воркером (SCOOT_PRICE_STARS)
+let scootUnlocked = false;
+try { scootUnlocked = localStorage.getItem('mw-scoot-unlocked') === '1'; } catch (e) {}
+
+function netCheckScoot(cb) {
+  if (scootUnlocked || !API_BASE) { if (cb) cb(scootUnlocked); return; }
+  fetch(API_BASE + '/unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: netClientId(),
+      product: 'scoot',
+      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
+    }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d && d.unlocked) {
+        scootUnlocked = true;
+        try { localStorage.setItem('mw-scoot-unlocked', '1'); } catch (e) {}
+      }
+      if (cb) cb(scootUnlocked);
+    })
+    .catch(() => { if (cb) cb(scootUnlocked); });
+}
+
+function netBuyScoot(onDone) { netBuyProduct('scoot', netCheckScoot, onDone); }
+
 // ===== Аксессуары гардероба (поштучно, 1–5 Stars) =====
 // Перекраски бесплатны; цены синхронно с воркером (ACC_PRICES там же)
 

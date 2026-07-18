@@ -19,6 +19,7 @@
 const SPRITE_PRICE_STARS = 10;   // цена разблокировки кастомных спрайтов, XTR
 const WARDROBE_PRICE_STARS = 15; // цена гардероба игрока, XTR
 const MONGEN_PRICE_STARS = 25;   // цена одной генерации заказного братишки, XTR
+const SCOOT_PRICE_STARS = 50;    // цена премиум-маунта «Электросамокат», XTR
 
 // Товары: once — одноразовая разблокировка (KV-флаг), иначе счётчик кредитов
 const PRODUCTS = {
@@ -35,6 +36,10 @@ const PRODUCTS = {
          title: 'Заказной братишка',
          desc: 'Уникальный братишка: твой тип, окрас и имя. Одна генерация.',
          thanks: '⭐ Спасибо! Генерация оплачена — вернись в игру и собери своего братишку.' },
+  scoot: { once: true, price: SCOOT_PRICE_STARS,   key: id => 'scoot:' + id,
+         title: 'Электросамокат',
+         desc: 'Премиум-маунт: гоняй по суше быстрее всех. Навсегда.',
+         thanks: '⭐ Спасибо! Электросамокат в гараже — вернись в игру и прокатись.' },
 };
 
 const INDEX_KEY = 'idx';
@@ -243,7 +248,7 @@ export default {
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.id);
       if (id.length < 8) return json({ unlocked: false });
-      const prod = (body.product === 'wrd') ? 'wrd' : 'spr';
+      const prod = (body.product === 'wrd' || body.product === 'scoot') ? body.product : 'spr';
       const key = PRODUCTS[prod].key(id);
       if (await env.SNAPS.get(key)) return json({ unlocked: true });
       // initData подписан Telegram — подделать чужой tg-id нельзя
@@ -362,7 +367,7 @@ export default {
           });
           return new Response('ok');
         }
-        const m = payload.match(/^(spr|wrd|mon):(.+)$/);
+        const m = payload.match(/^(spr|wrd|mon|scoot):(.+)$/);
         if (m) {
           const p = PRODUCTS[m[1]];
           const id = cleanId(m[2]);
