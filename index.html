@@ -89,6 +89,9 @@
     gap: 14px; text-align: center;
   }
   .hidden { display: none !important; }
+  /* длинные списки гардероба/магазина — на десктопе внутренний скролл, чтобы панель влезала в экран */
+  #shop-cats { max-height: 280px; overflow-y: auto; }
+  #wrd-owned { max-height: 220px; overflow-y: auto; }
   h1 { color: var(--ui-accent); font-size: 34px; letter-spacing: 2px; text-shadow: 3px 3px 0 #000; }
   .overlay p { max-width: 560px; line-height: 1.5; font-size: 14px; opacity: .9; }
   button {
@@ -322,7 +325,8 @@
      или flex-column уезжает колонками вбок; скроллится вся страница целиком */
   body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
   body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
-  body.mobile #friend-main, body.mobile #dex-grid, body.mobile #trade-rows {
+  body.mobile #friend-main, body.mobile #dex-grid, body.mobile #trade-rows,
+  body.mobile #shop-cats, body.mobile #wrd-owned {
     max-height: none !important; flex-shrink: 0;
   }
   body.mobile h1 { font-size: 20px; }
@@ -567,10 +571,11 @@
     <button id="btn-settings-close">Закрыть (Esc)</button>
   </div>
 
-  <!-- Гардероб -->
+  <!-- Гардероб: перекраски + купленные вещи; покупки — в отдельном магазине -->
   <div id="wardrobe-panel" class="overlay hidden">
     <h1 style="font-size:22px;">👕 Гардероб</h1>
     <div style="display:flex;flex-direction:column;gap:12px;width:min(360px,94vw);align-items:center;">
+      <button id="wrd-shop">⭐ Купить аксессуары</button>
       <canvas id="wrd-preview" style="width:96px;height:96px;image-rendering:pixelated;"></canvas>
       <div style="align-self:flex-start;font-size:13px;opacity:.85;">Футболка:</div>
       <div id="wrd-shirts" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;"></div>
@@ -578,11 +583,20 @@
       <div id="wrd-hairs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;"></div>
       <div style="align-self:flex-start;font-size:13px;opacity:.85;">Кожа:</div>
       <div id="wrd-skins" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;"></div>
-      <div style="align-self:flex-start;font-size:13px;opacity:.85;">Аксессуар:</div>
-      <div id="wrd-accs" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;"></div>
-      <button id="wrd-apply">✅ Применить</button>
+      <div id="wrd-owned" style="display:flex;flex-direction:column;gap:8px;align-items:center;width:100%;"></div>
     </div>
     <button id="btn-wardrobe-close">Закрыть (Esc)</button>
+  </div>
+
+  <!-- Магазин стиля: категории вещей, примерка на превью, покупка за Stars -->
+  <div id="accshop-panel" class="overlay hidden">
+    <h1 style="font-size:22px;">⭐ Магазин стиля</h1>
+    <div style="display:flex;flex-direction:column;gap:12px;width:min(420px,94vw);align-items:center;">
+      <canvas id="shop-preview" style="width:96px;height:96px;image-rendering:pixelated;"></canvas>
+      <div id="shop-buy" style="display:flex;flex-direction:column;gap:6px;align-items:center;"></div>
+      <div id="shop-cats" style="display:flex;flex-direction:column;gap:8px;align-items:center;width:100%;"></div>
+    </div>
+    <button id="btn-accshop-close">‹ Назад в гардероб</button>
   </div>
 
   <!-- Генератор заказных братишек -->

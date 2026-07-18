@@ -129,14 +129,210 @@ let canvas, ctx;
 
 // ===== Спрайты людей (рисуются кодом) =====
 
-// Аксессуары гардероба поверх головы 16×16 (все 4 направления)
+// Аксессуары гардероба поверх головы 16×16 (все 4 направления).
+// draw(r, d, shirt): r(цвет, x, y, w=1, h=1) рисует прямоугольник в кадре, d — 'down'|'up'|'left'|'right'.
+// Голова x4..11 y1..6, волосы y1..2, глаза y4, свободная строка y0 — над головой.
 const OUTFIT_ACCS = {
-  cap:     { name: '🧢 Кепка' },
-  glasses: { name: '🕶 Очки' },
-  crown:   { name: '👑 Корона' },
+  cap: { name: '🧢 Кепка', draw(r, d, shirt) {
+    r(shirt, 4, 1, 8, 2);
+    if (d === 'down') r(shirt, 3, 3, 10, 1);
+    else if (d === 'left') r(shirt, 2, 3, 5, 1);
+    else if (d === 'right') r(shirt, 9, 3, 5, 1);
+  } },
+  fightband: { name: '🥋 Повязка бойца', draw(r, d) {
+    const W = '#f0f0f0';
+    r(W, 4, 3, 8, 1);
+    if (d === 'up') { r(W, 6, 4, 1, 2); r(W, 9, 4, 1, 2); }
+    else if (d === 'left') { r(W, 12, 3, 2, 1); r(W, 13, 4); }
+    else if (d === 'right') { r(W, 2, 3, 2, 1); r(W, 2, 4); }
+  } },
+  pirate: { name: '🏴 Бандана пирата', draw(r, d) {
+    const R = '#c03030', W = '#f0f0f0';
+    r(R, 4, 1, 8, 2); r(W, 6, 1); r(W, 9, 2);
+    if (d === 'up') { r(R, 7, 3, 2, 1); r(R, 6, 4, 1, 2); r(R, 9, 4); }
+    else if (d === 'left') { r(R, 12, 1, 2, 1); r(R, 13, 2); }
+    else if (d === 'right') { r(R, 2, 1, 2, 1); r(R, 2, 2); }
+  } },
+  glasses: { name: '🕶 Очки', draw(r, d) {
+    if (d === 'down') r('#101018', 5, 4, 6, 1);
+    else if (d === 'left') r('#101018', 4, 4, 3, 1);
+    else if (d === 'right') r('#101018', 9, 4, 3, 1);
+  } },
+  anaglyph: { name: '🎬 3D-очки', draw(r, d) {
+    const W = '#f0f0f0';
+    if (d === 'down') { r(W, 4, 4, 8, 1); r('#e04040', 5, 4, 2, 1); r('#30c8d8', 9, 4, 2, 1); }
+    else if (d === 'left') { r(W, 3, 4, 4, 1); r('#e04040', 4, 4, 2, 1); }
+    else if (d === 'right') { r(W, 9, 4, 4, 1); r('#30c8d8', 10, 4, 2, 1); }
+  } },
+  merc: { name: '🐍 Бандана наёмника', draw(r, d) {
+    const B = '#5a6a7a';
+    r(B, 4, 1, 8, 2);
+    if (d === 'up') { r('#3a4a5a', 7, 3, 2, 1); r(B, 6, 4, 1, 2); r(B, 9, 4, 1, 2); }
+    else if (d === 'left') { r(B, 12, 2, 2, 1); r(B, 13, 3); }
+    else if (d === 'right') { r(B, 2, 2, 2, 1); r(B, 2, 3); }
+  } },
+  invader: { name: '👾 Антенны пришельца', draw(r, d) {
+    const G = '#40d840';
+    if (d === 'left') { r(G, 5, 1); r(G, 9, 1); r(G, 4, 0, 2, 1); r(G, 8, 0, 2, 1); }
+    else if (d === 'right') { r(G, 6, 1); r(G, 10, 1); r(G, 6, 0, 2, 1); r(G, 10, 0, 2, 1); }
+    else { r(G, 5, 1); r(G, 10, 1); r(G, 4, 0, 2, 1); r(G, 10, 0, 2, 1); }
+  } },
+  plumber: { name: '🔧 Кепка сантехника', draw(r, d) {
+    const R = '#d82818', W = '#f0f0f0';
+    r(R, 4, 1, 8, 2);
+    if (d === 'down') { r(R, 3, 3, 10, 1); r(W, 7, 1, 2, 2); }
+    else if (d === 'left') { r(R, 2, 3, 5, 1); r(W, 4, 1, 1, 2); }
+    else if (d === 'right') { r(R, 9, 3, 5, 1); r(W, 11, 1, 1, 2); }
+  } },
+  elfcap: { name: '🧝 Колпак героя в зелёном', draw(r, d) {
+    const G = '#2e9a40';
+    r(G, 4, 1, 8, 2);
+    if (d === 'left') { r(G, 10, 0, 3, 1); r(G, 12, 1, 2, 1); }
+    else if (d === 'right') { r(G, 3, 0, 3, 1); r(G, 2, 1, 2, 1); }
+    else if (d === 'up') { r(G, 6, 0, 4, 1); r(G, 7, 3, 2, 2); }
+    else r(G, 6, 0, 4, 1);
+  } },
+  hedgehog: { name: '🦔 Иглы синего ежа', draw(r, d) {
+    const B = '#2858d8';
+    r(B, 4, 1, 8, 2);
+    r(B, 4, 0); r(B, 6, 0); r(B, 8, 0); r(B, 10, 0);
+    if (d === 'up') r(B, 4, 1, 8, 5);
+    else if (d === 'left') { r(B, 9, 1, 3, 4); r(B, 12, 2); }
+    else if (d === 'right') { r(B, 4, 1, 3, 4); r(B, 3, 2); }
+  } },
+  champcap: { name: '🎒 Кепка юного чемпиона', draw(r, d) {
+    const R = '#d82818', W = '#f0f0f0';
+    r(R, 4, 1, 8, 2);
+    if (d === 'down') { r(R, 3, 3, 10, 1); r(W, 6, 2, 4, 1); r('#2e9a40', 7, 2, 2, 1); }
+    else if (d === 'left') { r(R, 2, 3, 5, 1); r(W, 4, 2, 2, 1); }
+    else if (d === 'right') { r(R, 9, 3, 5, 1); r(W, 10, 2, 2, 1); }
+  } },
+  redvisor: { name: '📟 Красный визор', draw(r, d) {
+    const R = '#d82818', D = '#600808';
+    if (d === 'up') r('#3a3a44', 4, 2, 8, 1);
+    else if (d === 'down') { r(R, 4, 3, 8, 2); r(D, 5, 4, 6, 1); }
+    else if (d === 'left') { r(R, 3, 3, 5, 2); r(D, 3, 4, 4, 1); }
+    else { r(R, 8, 3, 5, 2); r(D, 9, 4, 4, 1); }
+  } },
+  frogcap: { name: '🐸 Лягушачий капюшон', draw(r, d) {
+    const G = '#3a9a50', W = '#f0f0f0', K = '#101018';
+    r(G, 4, 1, 8, 2);
+    if (d === 'up') { r(G, 4, 1, 8, 4); r(G, 4, 0, 2, 1); r(G, 10, 0, 2, 1); }
+    else if (d === 'down') { r(W, 4, 0, 2, 1); r(K, 5, 0); r(W, 10, 0, 2, 1); r(K, 10, 0); }
+    else if (d === 'left') { r(W, 4, 0, 2, 1); r(K, 4, 0); r(W, 8, 0, 2, 1); r(K, 8, 0); }
+    else { r(W, 6, 0, 2, 1); r(K, 7, 0); r(W, 10, 0, 2, 1); r(K, 11, 0); }
+  } },
+  ghostpal: { name: '👻 Призрачный кореш', draw(r, d) {
+    const E = '#3a6ab0';
+    r('#f0f0f5', 6, 0, 5, 2);
+    if (d === 'down') { r(E, 7, 1); r(E, 9, 1); }
+    else if (d === 'left') { r(E, 6, 1); r(E, 8, 1); }
+    else if (d === 'right') { r(E, 8, 1); r(E, 10, 1); }
+  } },
+  shroom: { name: '🍄 Грибная шапка', draw(r) {
+    const R = '#d82818', W = '#f0f0f0';
+    r(R, 4, 1, 8, 2); r(R, 5, 0, 6, 1);
+    r(W, 5, 1, 2, 1); r(W, 9, 1, 2, 1); r(W, 7, 0, 2, 1);
+  } },
+  robohelm: { name: '🤖 Шлем робобойца', draw(r, d) {
+    const B = '#2858d8', L = '#68b8f8';
+    if (d === 'up') { r(B, 4, 1, 8, 5); r(L, 7, 2, 2, 1); return; }
+    r(B, 4, 1, 8, 2); r(L, 7, 1, 2, 1);
+    if (d === 'left') { r(B, 9, 1, 3, 4); r(B, 3, 3, 1, 2); r(L, 3, 3); }
+    else if (d === 'right') { r(B, 4, 1, 3, 4); r(B, 12, 3, 1, 2); r(L, 12, 3); }
+    else { r(B, 3, 3, 1, 2); r(B, 12, 3, 1, 2); r(L, 3, 3); r(L, 12, 3); }
+  } },
+  crown: { name: '👑 Корона', draw(r) {
+    const Y = '#e8c95a';
+    r(Y, 4, 1, 8, 1);
+    r(Y, 4, 0); r(Y, 7, 0, 2, 1); r(Y, 11, 0);
+  } },
+  spartan: { name: '🪖 Шлем спартанца', draw(r, d) {
+    const G = '#4a6a3a', V = '#e8c95a';
+    if (d === 'up') { r(G, 4, 1, 8, 5); return; }
+    r(G, 4, 1, 8, 3); r(G, 4, 5, 8, 1);
+    if (d === 'down') { r(G, 4, 4); r(G, 11, 4); r(V, 5, 4, 6, 1); }
+    else if (d === 'left') { r(G, 7, 4, 5, 1); r(V, 4, 4, 3, 1); }
+    else { r(G, 4, 4, 5, 1); r(V, 9, 4, 3, 1); }
+  } },
+  starpin: { name: '⭐ Звезда неуязвимости', draw(r, d) {
+    const Y = '#f8d838', x = d === 'right' ? 6 : 9;
+    r(Y, x, 0); r(Y, x - 1, 1); r(Y, x, 1); r(Y, x + 1, 1); r(Y, x, 2);
+  } },
+  // ----- Костюмы (слот costume): тело x4..11 y7..11 + руки x3/x12 y8..10 -----
+  kimono: { name: '🥋 Кимоно бойца', draw(r, d) {
+    const W = '#f0f0f5';
+    r(W, 4, 7, 8, 5); r(W, 3, 8, 1, 3); r(W, 12, 8, 1, 3);
+    r('#101018', 4, 10, 8, 1);
+    if (d === 'down') { r('#c8c8d4', 6, 7); r('#c8c8d4', 9, 7); }
+  } },
+  tracksuit: { name: '🏃 Спортивка братана', draw(r, d) {
+    const B = '#2848a0';
+    r(B, 4, 7, 8, 5); r(B, 3, 8, 1, 3); r(B, 12, 8, 1, 3);
+    if (d === 'down') r('#16244f', 7, 7, 1, 5);
+    r('#f0f0f0', 4, 8, 8, 1);
+  } },
+  labcoat: { name: '🥼 Халат профессора', draw(r, d) {
+    const W = '#f0f0f5';
+    r(W, 4, 7, 8, 5); r(W, 3, 8, 1, 3); r(W, 12, 8, 1, 3);
+    if (d === 'down') { r('#a8a8b8', 7, 7, 1, 5); r('#5a5a6a', 6, 8); r('#5a5a6a', 6, 10); }
+  } },
+  vault: { name: '🔵 Комбез убежища', draw(r, d) {
+    const B = '#2860c8', Y = '#e8c95a';
+    r(B, 4, 7, 8, 5); r(B, 3, 8, 1, 3); r(B, 12, 8, 1, 3);
+    r(Y, 4, 10, 8, 1);
+    if (d === 'down') { r(Y, 4, 7); r(Y, 11, 7); }
+  } },
+  tux: { name: '🤵 Смокинг агента', draw(r, d) {
+    const K = '#16161e';
+    r(K, 4, 7, 8, 5); r(K, 3, 8, 1, 3); r(K, 12, 8, 1, 3);
+    if (d === 'down') { r('#f0f0f0', 7, 8, 2, 3); r('#c02838', 7, 7, 2, 1); }
+  } },
+  armor: { name: '🦾 Силовая броня', draw(r, d) {
+    const G = '#5a705a', L = '#8aa88a';
+    r(G, 3, 7, 10, 5);
+    r(L, 3, 7, 2, 1); r(L, 11, 7, 2, 1);
+    if (d === 'down') { r(L, 6, 8, 4, 1); r('#e8c95a', 7, 9, 2, 1); }
+    else if (d === 'up') r(L, 6, 8, 4, 1);
+  } },
+  // ----- Принты на футболке (слот print): видны спереди, костюм рисуется поверх -----
+  printheart: { name: '💗 Принт «сердце»', draw(r, d) {
+    if (d !== 'down') return;
+    const P = '#f06890';
+    r(P, 6, 8); r(P, 8, 8); r(P, 6, 9, 3, 1); r(P, 7, 10);
+  } },
+  printstar: { name: '⭐ Принт «звезда»', draw(r, d) {
+    if (d !== 'down') return;
+    const Y = '#f8d838';
+    r(Y, 7, 8); r(Y, 6, 9, 3, 1); r(Y, 7, 10);
+  } },
+  printskull: { name: '💀 Принт «череп»', draw(r, d, shirt) {
+    if (d !== 'down') return;
+    r('#f0f0f0', 6, 8, 3, 3); r(shirt, 6, 9); r(shirt, 8, 9);
+  } },
+  printinvader: { name: '👾 Принт «пришелец»', draw(r, d) {
+    if (d !== 'down') return;
+    const G = '#40d840';
+    r(G, 7, 8); r(G, 9, 8); r(G, 6, 9, 5, 1); r(G, 6, 10); r(G, 8, 10); r(G, 10, 10);
+  } },
+  printgg: { name: '🎮 Принт «GG»', draw(r, d) {
+    if (d !== 'down') return;
+    const W = '#f0f0f0';
+    for (const x of [5, 9]) { r(W, x, 7, 3, 1); r(W, x, 8); r(W, x, 9); r(W, x + 2, 9); r(W, x, 10, 3, 1); }
+  } },
 };
 
-function makePersonSprite(shirt, hair, acc, skin) {
+// Слоты: одна вещь на слот, шапка+очки+костюм+принт носятся одновременно
+const ACC_SLOTS = {
+  glasses: 'glasses', anaglyph: 'glasses', redvisor: 'glasses',
+  kimono: 'costume', tracksuit: 'costume', labcoat: 'costume', vault: 'costume', tux: 'costume', armor: 'costume',
+  printheart: 'print', printstar: 'print', printskull: 'print', printinvader: 'print', printgg: 'print',
+};
+const accSlot = k => ACC_SLOTS[k] || 'head';
+const SLOT_FIELD = { head: 'acc', glasses: 'glasses', costume: 'costume', print: 'print' }; // acc — легаси-имя слота шапок в сейве
+const ACC_CATS = [['head', '🧢 Шапки'], ['glasses', '🕶 Очки'], ['costume', '🧥 Костюмы'], ['print', '👕 Футболки']];
+
+function makePersonSprite(shirt, hair, acc, skin, extra) {
   skin = skin || '#e8b088';
   // 4 направления x 2 кадра, каждый 16x16
   const cv = document.createElement('canvas');
@@ -175,34 +371,26 @@ function makePersonSprite(shirt, hair, acc, skin) {
         c.fillStyle = '#101018'; c.fillRect(ox + 10, oy + 4, 1, 1);
         c.fillStyle = hair; c.fillRect(ox + 4, oy + 1, 3, 4);
       }
-      // аксессуар — поверх волос и глаз
-      if (acc === 'cap') {
-        c.fillStyle = shirt;
-        c.fillRect(ox + 4, oy + 1, 8, 2);
-        if (dirs[d] === 'down') c.fillRect(ox + 3, oy + 3, 10, 1);
-        else if (dirs[d] === 'left') c.fillRect(ox + 2, oy + 3, 5, 1);
-        else if (dirs[d] === 'right') c.fillRect(ox + 9, oy + 3, 5, 1);
-      } else if (acc === 'glasses' && dirs[d] !== 'up') {
-        c.fillStyle = '#101018';
-        if (dirs[d] === 'down') c.fillRect(ox + 5, oy + 4, 6, 1);
-        else if (dirs[d] === 'left') c.fillRect(ox + 4, oy + 4, 3, 1);
-        else c.fillRect(ox + 9, oy + 4, 3, 1);
-      } else if (acc === 'crown') {
-        c.fillStyle = '#e8c95a';
-        c.fillRect(ox + 4, oy + 1, 8, 1);
-        c.fillRect(ox + 4, oy, 1, 1); c.fillRect(ox + 7, oy, 2, 1); c.fillRect(ox + 11, oy, 1, 1);
-      }
+      // аксессуары — поверх базы: принт → костюм (закрывает принт) → шапка → очки
+      const r = (col, x, y, w, h) => { c.fillStyle = col; c.fillRect(ox + x, oy + y, w || 1, h || 1); };
+      const put = k => { if (k && OUTFIT_ACCS[k]) OUTFIT_ACCS[k].draw(r, dirs[d], shirt, skin); };
+      const ex = extra || {};
+      put(ex.print); put(ex.costume); put(acc); put(ex.glasses);
     }
   }
   return cv;
 }
 
 // Наряд игрока: дефолт как у классического героя
-const DEFAULT_OUTFIT = { shirt: '#d84848', hair: '#6b3a1e', acc: null, skin: '#e8b088' };
+const DEFAULT_OUTFIT = { shirt: '#d84848', hair: '#6b3a1e', acc: null, glasses: null, costume: null, print: null, skin: '#e8b088' };
 
 function applyOutfit() {
   const o = (G && G.outfit) || DEFAULT_OUTFIT;
-  playerSprite = makePersonSprite(o.shirt, o.hair, OUTFIT_ACCS[o.acc] ? o.acc : null, o.skin);
+  // миграция старого сейва: очки жили в общем слоте acc
+  if (o.acc && OUTFIT_ACCS[o.acc] && accSlot(o.acc) !== 'head') { o[SLOT_FIELD[accSlot(o.acc)]] = o.acc; o.acc = null; }
+  const val = (f, slot) => (OUTFIT_ACCS[o[f]] && accSlot(o[f]) === slot) ? o[f] : null;
+  playerSprite = makePersonSprite(o.shirt, o.hair, val('acc', 'head'), o.skin,
+    { glasses: val('glasses', 'glasses'), costume: val('costume', 'costume'), print: val('print', 'print') });
 }
 
 let playerSprite = null, trainerSprite = null, masterSprite = null, traderSprite = null;
@@ -1888,7 +2076,7 @@ function renderShop() {
   if (_shopCat === 'donate') {
     shopSpecialRow(rows, '✨ Заказной братишка', 'Уникальный шайни-братишка: твой тип, окрас и имя. 3 стадии.',
       MONGEN_PRICE + '⭐', 'Открыть', () => openMongen());
-    shopSpecialRow(rows, '👕 Гардероб', 'Перекраски футболки, волос и кожи — бесплатно. Аксессуары — поштучно, навсегда.',
+    shopSpecialRow(rows, '👕 Гардероб', 'Перекраски — бесплатно. Шапки, очки, костюмы и принты — поштучно, навсегда.',
       'аксессуары 1–5⭐', 'Открыть', () => openWardrobe());
     shopSpecialRow(rows, '🖼 Свои спрайты', 'Загружай собственные PNG-облики братишек — кнопка на экране братишки.',
       sprUnlocked ? '<span style="opacity:.7">куплено</span>' : SPRITE_PRICE + '⭐', 'К братве', () => { closeShop(); togglePartyPanel(); });
@@ -2479,24 +2667,25 @@ function renderSettings() {
   });
 }
 
-// ===== Гардероб игрока (перекраски + аксессуары, платная разблокировка) =====
+// ===== Гардероб игрока (перекраски бесплатны, вещи — только купленные) =====
 
-const OUTFIT_SHIRTS = ['#d84848', '#3a6ab0', '#3a9a50', '#d8a018', '#8a4fd0', '#e87fb0', '#3aa8a0', '#26262e'];
+const OUTFIT_SHIRTS = ['#d84848', '#3a6ab0', '#3a9a50', '#d8a018', '#8a4fd0', '#e87fb0', '#3aa8a0', '#f0f0f0', '#26262e'];
 const OUTFIT_HAIRS  = ['#6b3a1e', '#2a2a38', '#e8c95a', '#b0523a', '#f0f0f0', '#8a4fd0', '#3a6ab0', '#3a9a50'];
-// белый, 5 телесных от светлого к тёмному, чёрный
-const OUTFIT_SKINS  = ['#f0f0f5', '#ffe0c8', '#e8b088', '#c98d5e', '#a06a42', '#7a4a2c', '#26262e'];
-
-let _wrdDraft = null; // черновик наряда, пока панель открыта
+// белый, 5 телесных от светлого к тёмному, чёрный + фан: зелёный и синий
+const OUTFIT_SKINS  = ['#f0f0f5', '#ffe0c8', '#e8b088', '#c98d5e', '#a06a42', '#7a4a2c', '#26262e', '#6ab04c', '#4a7ad8'];
 
 function openWardrobe() {
   if (G.state === 'settings') { document.getElementById('settings-panel').classList.add('hidden'); G.state = 'world'; }
   if (G.state === 'shop') closeShop();
   if (G.state !== 'world') return;
   G.state = 'wardrobe';
-  _wrdDraft = Object.assign({}, DEFAULT_OUTFIT, G.outfit || {});
+  if (!G.outfit) G.outfit = Object.assign({}, DEFAULT_OUTFIT);
   renderWardrobe();
   document.getElementById('wardrobe-panel').classList.remove('hidden');
-  netAccsStatus(() => { if (G.state === 'wardrobe') renderWardrobe(); });
+  netAccsStatus(() => {
+    if (G.state === 'wardrobe') renderWardrobe();
+    else if (G.state === 'accshop') renderAccShop();
+  });
 }
 
 function closeWardrobe() {
@@ -2504,22 +2693,31 @@ function closeWardrobe() {
   G.state = 'world';
 }
 
-function renderWardrobe() {
-  // предпросмотр: кадр «вниз» из спрайт-листа, увеличенный
-  const cv = document.getElementById('wrd-preview');
+// нарисовать наряд в превью-канвас (кадр «вниз», увеличенный)
+function drawOutfitPreview(cvId, o) {
+  const cv = document.getElementById(cvId);
   cv.width = 16; cv.height = 16;
   const c = cv.getContext('2d');
   c.imageSmoothingEnabled = false;
-  c.drawImage(makePersonSprite(_wrdDraft.shirt, _wrdDraft.hair, _wrdDraft.acc, _wrdDraft.skin), 0, 0, 16, 16, 0, 0, 16, 16);
+  const val = (f, slot) => (OUTFIT_ACCS[o[f]] && accSlot(o[f]) === slot) ? o[f] : null;
+  c.drawImage(makePersonSprite(o.shirt, o.hair, val('acc', 'head'), o.skin,
+    { glasses: val('glasses', 'glasses'), costume: val('costume', 'costume'), print: val('print', 'print') }),
+    0, 0, 16, 16, 0, 0, 16, 16);
+}
 
+function renderWardrobe() {
+  const o = G.outfit;
+  drawOutfitPreview('wrd-preview', o);
+
+  // перекраски — применяются сразу, они бесплатные
   const swatchRow = (elId, colors, key) => {
     const el = document.getElementById(elId);
     el.innerHTML = '';
     for (const col of colors) {
       const b = document.createElement('button');
       b.style.cssText = 'width:34px;height:34px;padding:0;border-radius:8px;background:' + col +
-        ';border:3px solid ' + (_wrdDraft[key] === col ? 'var(--ui-accent)' : 'var(--ui-border)') + ';';
-      b.onclick = () => { _wrdDraft[key] = col; renderWardrobe(); };
+        ';border:3px solid ' + (o[key] === col ? 'var(--ui-accent)' : 'var(--ui-border)') + ';';
+      b.onclick = () => { o[key] = col; applyOutfit(); saveGame(); renderWardrobe(); };
       el.appendChild(b);
     }
   };
@@ -2527,34 +2725,113 @@ function renderWardrobe() {
   swatchRow('wrd-hairs', OUTFIT_HAIRS, 'hair');
   swatchRow('wrd-skins', OUTFIT_SKINS, 'skin');
 
-  // аксессуары: поштучно за Stars (цвета бесплатны для всех)
-  const accEl = document.getElementById('wrd-accs');
-  accEl.innerHTML = '';
-  const accs = [[null, '— без —']].concat(Object.entries(OUTFIT_ACCS).map(([k, a]) => [k, a.name]));
-  for (const [k, label] of accs) {
-    const b = document.createElement('button');
-    const owned = !k || accsOwned.has(k);
-    b.textContent = owned ? label : '🔒 ' + label + ' · ' + ACC_PRICES[k] + '⭐';
-    if (_wrdDraft.acc === k) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
-    if (!owned) b.style.opacity = '.75';
-    b.onclick = () => {
-      if (owned) { _wrdDraft.acc = k; renderWardrobe(); return; }
-      if (IS_TMA) netBuyAcc(k, () => { toast('⭐ «' + OUTFIT_ACCS[k].name.replace(/^\S+ /, '') + '» твоя навсегда!'); _wrdDraft.acc = k; renderWardrobe(); });
+  // купленные вещи по категориям: клик — надеть/снять сразу
+  const ownEl = document.getElementById('wrd-owned');
+  ownEl.innerHTML = '';
+  let any = false;
+  for (const [slot, title] of ACC_CATS) {
+    const items = Object.keys(OUTFIT_ACCS).filter(k => accSlot(k) === slot && accsOwned.has(k));
+    if (!items.length) continue;
+    any = true;
+    const h = document.createElement('div');
+    h.style.cssText = 'align-self:flex-start;font-size:13px;opacity:.85;';
+    h.textContent = title + ':';
+    ownEl.appendChild(h);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center;';
+    const f = SLOT_FIELD[slot];
+    for (const k of items) {
+      const b = document.createElement('button');
+      const worn = o[f] === k;
+      b.textContent = (worn ? '✅ ' : '') + OUTFIT_ACCS[k].name;
+      if (worn) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+      b.onclick = () => { o[f] = worn ? null : k; applyOutfit(); saveGame(); renderWardrobe(); };
+      row.appendChild(b);
+    }
+    ownEl.appendChild(row);
+  }
+  if (!any) {
+    const d = document.createElement('div');
+    d.style.cssText = 'font-size:13px;opacity:.6;max-width:300px;line-height:1.4;';
+    d.textContent = 'Купленные вещи появятся здесь. Загляни в магазин — там шапки, очки, костюмы и принты.';
+    ownEl.appendChild(d);
+  }
+}
+
+// ===== Магазин стиля (примерка бесплатна, покупка за Stars) =====
+
+let _shopSel = null; // выбранная в магазине вещь (примеряется на превью)
+
+function openAccShop() {
+  if (G.state !== 'wardrobe') return;
+  G.state = 'accshop';
+  document.getElementById('wardrobe-panel').classList.add('hidden');
+  _shopSel = null;
+  renderAccShop();
+  document.getElementById('accshop-panel').classList.remove('hidden');
+}
+
+function closeAccShop() {
+  document.getElementById('accshop-panel').classList.add('hidden');
+  G.state = 'wardrobe';
+  renderWardrobe();
+  document.getElementById('wardrobe-panel').classList.remove('hidden');
+}
+
+function renderAccShop() {
+  // превью: текущий наряд + примерка выбранного
+  const tryOn = Object.assign({}, G.outfit);
+  if (_shopSel) {
+    tryOn[SLOT_FIELD[accSlot(_shopSel)]] = _shopSel;
+    if (accSlot(_shopSel) === 'print') tryOn.costume = null; // костюм закрыл бы примеряемый принт
+  }
+  drawOutfitPreview('shop-preview', tryOn);
+
+  const buyEl = document.getElementById('shop-buy');
+  buyEl.innerHTML = '';
+  if (_shopSel && !accsOwned.has(_shopSel)) {
+    const k = _shopSel, plainName = OUTFIT_ACCS[k].name.replace(/^\S+ /, '');
+    const bb = document.createElement('button');
+    bb.textContent = '⭐ Купить «' + plainName + '» за ' + ACC_PRICES[k] + '⭐';
+    bb.onclick = () => {
+      if (IS_TMA) netBuyAcc(k, () => {
+        toast('⭐ «' + plainName + '» твоя навсегда!');
+        G.outfit[SLOT_FIELD[accSlot(k)]] = k; // купленное надевается сразу
+        applyOutfit(); saveGame();
+        if (G.state === 'accshop') renderAccShop();
+      });
       else toast('Аксессуары покупаются в Telegram: @poketmons_bot');
     };
-    accEl.appendChild(b);
+    buyEl.appendChild(bb);
+  } else {
+    const d = document.createElement('div');
+    d.style.cssText = 'font-size:12px;opacity:.6;';
+    d.textContent = _shopSel ? '✅ Уже куплено — надевается в Гардеробе' : 'Тыкни вещь — примерка бесплатна';
+    buyEl.appendChild(d);
   }
 
-  const applyBtn = document.getElementById('wrd-apply');
-  applyBtn.disabled = false;
-  applyBtn.onclick = () => {
-    if (_wrdDraft.acc && !accsOwned.has(_wrdDraft.acc)) _wrdDraft.acc = null; // страховка
-    G.outfit = Object.assign({}, _wrdDraft);
-    applyOutfit();
-    saveGame();
-    toast('👕 Новый образ принят!');
-    closeWardrobe();
-  };
+  const catEl = document.getElementById('shop-cats');
+  catEl.innerHTML = '';
+  for (const [slot, title] of ACC_CATS) {
+    const items = Object.keys(OUTFIT_ACCS).filter(k => accSlot(k) === slot);
+    if (!items.length) continue;
+    const h = document.createElement('div');
+    h.style.cssText = 'align-self:flex-start;font-size:13px;opacity:.85;';
+    h.textContent = title + ':';
+    catEl.appendChild(h);
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;gap:6px;flex-wrap:wrap;justify-content:center;';
+    for (const k of items) {
+      const b = document.createElement('button');
+      const owned = accsOwned.has(k);
+      b.textContent = owned ? '✅ ' + OUTFIT_ACCS[k].name : OUTFIT_ACCS[k].name + ' · ' + ACC_PRICES[k] + '⭐';
+      if (owned) b.style.opacity = '.6';
+      if (_shopSel === k) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+      b.onclick = () => { _shopSel = (_shopSel === k) ? null : k; renderAccShop(); };
+      row.appendChild(b);
+    }
+    catEl.appendChild(row);
+  }
 }
 
 // ===== Генератор заказных братишек (за Stars) =====
@@ -3172,6 +3449,7 @@ function initInput() {
     if (e.code === 'KeyT' && (G.state === 'world' || G.state === 'friend')) { toggleFriendPanel(); return; }
     if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
     if (e.code === 'Comma' && (G.state === 'world' || G.state === 'settings')) { toggleSettings(); return; }
+    if (e.key === 'Escape' && G.state === 'accshop') { closeAccShop(); return; }
     if (e.key === 'Escape' && G.state === 'wardrobe') { closeWardrobe(); return; }
     if (e.key === 'Escape' && G.state === 'mongen') { closeMongen(); return; }
     if (e.key === 'Escape') {
@@ -3232,6 +3510,8 @@ function initTitle() {
   document.getElementById('bt-load').onclick = () => Battle.battleReload();
   document.getElementById('set-wardrobe').onclick = () => openWardrobe();
   document.getElementById('btn-wardrobe-close').onclick = () => closeWardrobe();
+  document.getElementById('wrd-shop').onclick = () => openAccShop();
+  document.getElementById('btn-accshop-close').onclick = () => closeAccShop();
   document.getElementById('btn-mongen-close').onclick = () => closeMongen();
   document.getElementById('mg-reroll').onclick = () => mongenReroll();
   document.getElementById('btn-teach-close').onclick = () => closeTeach();
