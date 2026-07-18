@@ -340,9 +340,9 @@ function saveGame() {
 
 const QUICK_KEY = 'mw-quicksave';
 
-// Тихий быстросейв (авто перед боем, если включён режим сейвскамера)
+// Тихий быстросейв (авто перед боем, если куплен и включён режим сейвскамера)
 function autoQuickSave() {
-  if (!SCUM_ON) return;
+  if (!SCUM_ON || !scumUnlocked) return;
   try { localStorage.setItem(QUICK_KEY, JSON.stringify(buildSaveData())); } catch (e) {}
 }
 
@@ -2380,11 +2380,20 @@ function renderSettings() {
   } else {
     joyBtn.style.display = 'none';
   }
-  // режим сейвскамера: тумблер + кнопки быстросейва/отката
+  // режим сейвскамера: премиум за Stars; куплен — тумблер + быстросейв/откат
   const scumBtn = document.getElementById('set-scum');
-  scumBtn.textContent = SCUM_ON ? '💾 Сейвскам: вкл' : '💾 Сейвскам: выкл';
-  scumBtn.onclick = () => { setScum(!SCUM_ON); if (SCUM_ON) autoQuickSave(); renderSettings(); };
-  document.getElementById('set-scum-actions').style.display = SCUM_ON ? 'flex' : 'none';
+  if (scumUnlocked) {
+    scumBtn.textContent = SCUM_ON ? '💾 Сейвскам: вкл' : '💾 Сейвскам: выкл';
+    scumBtn.onclick = () => { setScum(!SCUM_ON); if (SCUM_ON) autoQuickSave(); renderSettings(); };
+    document.getElementById('set-scum-actions').style.display = SCUM_ON ? 'flex' : 'none';
+  } else {
+    scumBtn.textContent = '🔒 Сейвскам · ' + SCUM_PRICE + '⭐';
+    scumBtn.onclick = () => {
+      if (IS_TMA) netBuyScum(() => { toast('💾 Режим сейвскамера открыт!'); renderSettings(); });
+      else toast('Покупка за Stars — в Telegram: @poketmons_bot');
+    };
+    document.getElementById('set-scum-actions').style.display = 'none';
+  }
 
   // тумблер электросамоката — только у купивших
   const scootBtn = document.getElementById('set-scooter');
@@ -3175,6 +3184,8 @@ function initTitle() {
   document.getElementById('btn-settings-close').onclick = () => toggleSettings();
   document.getElementById('set-quicksave').onclick = () => quickSave();
   document.getElementById('set-quickload').onclick = () => quickLoad();
+  document.getElementById('bt-save').onclick = () => Battle.battleSave();
+  document.getElementById('bt-load').onclick = () => Battle.battleReload();
   document.getElementById('set-wardrobe').onclick = () => openWardrobe();
   document.getElementById('btn-wardrobe-close').onclick = () => closeWardrobe();
   document.getElementById('btn-mongen-close').onclick = () => closeMongen();
@@ -3329,9 +3340,10 @@ function main() {
   applyJoySide();
   stripKeyHints();
   updateHUD();
-  netFetchRival();   // предзагрузка «живого» соперника
-  netCheckUnlock();  // куплена ли загрузка спрайтов (кэшируется локально)
-  netCheckScoot();   // куплен ли электросамокат
+  // разовые покупки (спрайты/самокат/сейвскам) — одним запросом /status;
+  // «живого» соперника тянем лениво при первом бою (не при старте), чтобы
+  // не жечь KV-операции почём зря
+  netCheckStatus();
 
   // запуск по deep-link на PvP-вызов (?startapp=pvp<id>)
   if (IS_TMA && /^pvp[a-z0-9]+$/i.test(START_PARAM)) handlePvpDeepLink(START_PARAM.slice(3));

@@ -20,6 +20,7 @@ const SPRITE_PRICE_STARS = 10;   // цена разблокировки каст
 const WARDROBE_PRICE_STARS = 15; // цена гардероба игрока, XTR
 const MONGEN_PRICE_STARS = 25;   // цена одной генерации заказного братишки, XTR
 const SCOOT_PRICE_STARS = 50;    // цена премиум-маунта «Электросамокат», XTR
+const SCUM_PRICE_STARS = 10;     // цена режима сейвскамера, XTR
 
 // Товары: once — одноразовая разблокировка (KV-флаг), иначе счётчик кредитов
 const PRODUCTS = {
@@ -40,6 +41,10 @@ const PRODUCTS = {
          title: 'Электросамокат',
          desc: 'Премиум-маунт: гоняй по суше быстрее всех. Навсегда.',
          thanks: '⭐ Спасибо! Электросамокат в гараже — вернись в игру и прокатись.' },
+  scum: { once: true, price: SCUM_PRICE_STARS,     key: id => 'scum:' + id,
+         title: 'Режим сейвскамера',
+         desc: 'Сохраняйся и откатывайся прямо в бою — переигрывай любой удар. Навсегда.',
+         thanks: '⭐ Спасибо! Режим сейвскамера открыт — включи его в настройках.' },
 };
 
 const INDEX_KEY = 'idx';
@@ -356,8 +361,23 @@ export default {
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const b = await buyerKey(env, body);
       if (badBuyer(b)) return json({ unlocked: false });
-      const prod = (body.product === 'wrd' || body.product === 'scoot') ? body.product : 'spr';
+      const prod = PRODUCTS[body.product] && body.product !== 'mon' ? body.product : 'spr';
       return json({ unlocked: !!(await env.SNAPS.get(PRODUCTS[prod].key(b.key))) });
+    }
+
+    // --- объединённый статус всех разовых покупок за один запрос (экономит KV) ---
+    if (url.pathname === '/status' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({});
+      const [spr, scoot, scum] = await Promise.all([
+        env.SNAPS.get('unlock:' + b.key),
+        env.SNAPS.get('scoot:' + b.key),
+        env.SNAPS.get('scum:' + b.key),
+      ]);
+      return json({ spr: !!spr, scoot: !!scoot, scum: !!scum, vip: b.vip });
     }
 
     // --- гардероб: какие аксессуары реально куплены (по ключу покупателя) ---

@@ -117,6 +117,37 @@ const SPRITE_PRICE = 10;   // держать в синхроне с воркер
 let sprUnlocked = false;
 try { sprUnlocked = localStorage.getItem('mw-spr-unlocked2') === '1'; } catch (e) {}
 
+const SCUM_PRICE = 10;     // режим сейвскамера (SCUM_PRICE_STARS)
+let scumUnlocked = false;
+try { scumUnlocked = localStorage.getItem('mw-scum-unlocked') === '1'; } catch (e) {}
+
+// Объединённая проверка разовых покупок за ОДИН запрос (spr/scoot/scum) —
+// раньше было по запросу на каждый товар, теперь один /status. Экономит KV.
+function netCheckStatus(cb) {
+  if ((sprUnlocked && scootUnlocked && scumUnlocked) || !API_BASE) { if (cb) cb(); return; }
+  fetch(API_BASE + '/status', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: netClientId(), initData: tgInitData() }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d) {
+        if (d.spr) { sprUnlocked = true; try { localStorage.setItem('mw-spr-unlocked2', '1'); } catch (e) {} }
+        if (d.scoot) { scootUnlocked = true; try { localStorage.setItem('mw-scoot-unlocked2', '1'); } catch (e) {} }
+        if (d.scum) { scumUnlocked = true; try { localStorage.setItem('mw-scum-unlocked', '1'); } catch (e) {} }
+      }
+      if (cb) cb();
+    })
+    .catch(() => { if (cb) cb(); });
+}
+
+function netCheckScum(cb) {
+  if (scumUnlocked || !API_BASE) { if (cb) cb(scumUnlocked); return; }
+  netCheckStatus(() => { if (cb) cb(scumUnlocked); });
+}
+function netBuyScum(onDone) { netBuyProduct('scum', netCheckScum, onDone); }
+
 function netCheckUnlock(cb) {
   if (sprUnlocked || !API_BASE) { if (cb) cb(sprUnlocked); return; }
   fetch(API_BASE + '/unlock', {

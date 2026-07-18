@@ -3,17 +3,22 @@
 // ===== Боевая система =====
 // Асинхронный поток: await say(...) ждёт клика/Enter, await menu(...) ждёт выбора.
 
+// Маркер отката боя: им реджектится текущий await, цикл ловит и перезапускает ход
+const BATTLE_RELOAD = { reload: true };
+
 const Battle = {
   active: false,
   _sayResolve: null,
+  _sayReject: null,
   _menuResolve: null,
+  _battleSave: null,   // снапшот боя (сейвскам внутри боя)
 
   el(id) { return document.getElementById(id); },
 
   advance() {
     if (this._sayResolve) {
       const r = this._sayResolve;
-      this._sayResolve = null;
+      this._sayResolve = null; this._sayReject = null;
       r();
     }
   },
@@ -21,7 +26,42 @@ const Battle = {
   say(text) {
     this.el('bt-menu').innerHTML = '';
     this.el('bt-log').innerHTML = text + ' <span class="next">▼</span>';
-    return new Promise(res => { this._sayResolve = res; });
+    return new Promise((res, rej) => { this._sayResolve = res; this._sayReject = rej; });
+  },
+
+  // Сейвскам в бою: снапшот ОЗ/ПП/статусов обеих команд + сфер + активных бойцов
+  battleSave() {
+    if (!this.active) return;
+    this._battleSave = {
+      party: G.party.map(m => ({ hp: m.hp, status: m.status, pp: m.moves.map(mv => mv.pp) })),
+      enemy: (this._enemyRef || []).map(m => ({ hp: m.hp, status: m.status, pp: m.moves.map(mv => mv.pp) })),
+      orbs: G.orbs, pi: this._curPi, ei: this._curEi,
+    };
+    toast('💾 Бой сохранён.');
+  },
+
+  // Откат к боевому сейву: мутируем существующие объекты (ссылки те же) и
+  // прерываем текущий await — цикл ловит BATTLE_RELOAD и перезапускает ход
+  battleReload() {
+    if (!this.active) return;
+    if (!this._battleSave) { toast('Нет боевого сейва — сперва 💾.'); return; }
+    const s = this._battleSave;
+    const restore = (arr, snaps) => snaps.forEach((snap, i) => {
+      const m = arr[i]; if (!m) return;
+      m.hp = snap.hp; m.status = snap.status;
+      m.moves.forEach((mv, j) => { if (snap.pp[j] !== undefined) mv.pp = snap.pp[j]; });
+    });
+    restore(G.party, s.party);
+    restore(this._enemyRef || [], s.enemy);
+    G.orbs = s.orbs; updateHUD();
+    this._reloadPi = s.pi; this._reloadEi = s.ei;
+    if (this._menuResolve) {
+      const r = this._menuResolve; this._menuResolve = null; this.el('bt-menu').innerHTML = '';
+      r.rej(BATTLE_RELOAD);
+    } else if (this._sayReject) {
+      const rj = this._sayReject; this._sayResolve = null; this._sayReject = null;
+      rj(BATTLE_RELOAD);
+    }
   },
 
   note(text) { // сообщение без ожидания (подпись над меню)
@@ -32,8 +72,8 @@ const Battle = {
   menu(options, cancellable) {
     const menuEl = this.el('bt-menu');
     menuEl.innerHTML = '';
-    return new Promise(res => {
-      this._menuResolve = { res, cancellable: !!cancellable };
+    return new Promise((res, rej) => {
+      this._menuResolve = { res, rej, cancellable: !!cancellable };
       options.forEach((op, i) => {
         const b = document.createElement('button');
         b.innerHTML = (i + 1) + '. ' + op.label + (op.small ? '<small>' + op.small + '</small>' : '');
@@ -318,6 +358,9 @@ const Battle = {
     let ei = 0;
     const enemyParty = opts.enemyParty;
     let result = null;
+    this._enemyRef = enemyParty;
+    this._battleSave = null;
+    this.updateScumBtns();
 
     const setActive = () => { this._pm = party[pi]; this._em = enemyParty[ei]; this.refresh(this._pm, this._em); };
     setActive();
@@ -337,6 +380,8 @@ const Battle = {
 
     battleLoop:
     while (result === null) {
+      this._curPi = pi; this._curEi = ei;
+      try {
       const pm = party[pi], em = enemyParty[ei];
       this.note('Что будет делать ' + monName(pm) + '?');
       const actions = [
@@ -543,6 +588,15 @@ const Battle = {
         setActive();
         await this.say('Вперёд, ' + monName(party[pi]) + '!');
       }
+      } catch (e) {
+        // откат к боевому сейву: возвращаем активных бойцов и переигрываем ход
+        if (e === BATTLE_RELOAD) {
+          pi = this._reloadPi; ei = this._reloadEi;
+          setActive(); updateHUD();
+          continue battleLoop;
+        }
+        throw e;
+      }
     }
 
     // ---- завершение ----
@@ -576,7 +630,18 @@ const Battle = {
     }
 
     this.active = false;
+    this._battleSave = null;
+    this.updateScumBtns();
     this.el('battle').classList.add('hidden');
     return result;
+  },
+
+  // Показ боевых кнопок сейв/лоад — только в бою и при включённом сейвскаме
+  updateScumBtns() {
+    const box = this.el('bt-scum');
+    if (!box) return;
+    const on = this.active && typeof SCUM_ON !== 'undefined' && SCUM_ON &&
+               typeof scumUnlocked !== 'undefined' && scumUnlocked;
+    box.style.display = on ? 'flex' : 'none';
   },
 };
