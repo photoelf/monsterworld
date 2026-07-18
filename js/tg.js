@@ -6,11 +6,17 @@
 
 let TG = null;      // Telegram.WebApp или null
 let IS_TMA = false; // запущены ли мы как Mini App
+let START_PARAM = ''; // deep-link параметр запуска (?startapp=...): напр. 'pvp<id>'
 
 function initTelegram() {
   TG = (window.Telegram && window.Telegram.WebApp) || null;
   IS_TMA = !!(TG && TG.initData);
   if (!IS_TMA) return;
+
+  // deep-link параметр запуска (?startapp=…) — по нему открываем PvP-вызов
+  try {
+    START_PARAM = (TG.initDataUnsafe && TG.initDataUnsafe.start_param) || '';
+  } catch (e) {}
 
   // внутри Telegram окно телефонных пропорций на любой платформе —
   // всегда мобильный вид (кроме явного форса ?desktop или настройки)
@@ -202,4 +208,14 @@ async function ensureRegistration() {
 function updateNickUi() {
   const el = document.getElementById('title-nick');
   if (el && playerNick) el.textContent = '👤 ' + playerNick;
+}
+
+// Открыть штатный Telegram share-пикер со ссылкой-вызовом на PvP:
+// игрок выбирает любой контакт/чат/группу, получатель кликает и попадает в игру
+function tgSharePvp(id) {
+  const link = 'https://t.me/poketmons_bot?startapp=pvp' + id;
+  const text = '⚔️ Вызываю тебя на бой в Карманной Братве! Прими вызов:';
+  const shareUrl = 'https://t.me/share/url?url=' + encodeURIComponent(link) + '&text=' + encodeURIComponent(text);
+  if (TG && TG.openTelegramLink) TG.openTelegramLink(shareUrl);
+  else window.open(shareUrl, '_blank');
 }

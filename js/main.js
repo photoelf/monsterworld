@@ -3054,6 +3054,8 @@ function initTitle() {
   document.getElementById('btn-friend-offer').onclick = () => friendOfferFlow();
   document.getElementById('btn-friend-process').onclick = () => friendProcessCode();
   document.getElementById('btn-friend-pvp').onclick = () => pvpChallengeFlow();
+  const tgPvpBtn = document.getElementById('btn-friend-tgpvp');
+  if (tgPvpBtn) tgPvpBtn.onclick = () => pvpTgChallengeFlow();
   document.getElementById('btn-storage-open').onclick = () => toggleStorage();
   document.getElementById('btn-storage-close').onclick = () => toggleStorage();
   document.getElementById('btn-trade-close').onclick = () => closeTrade();
@@ -3156,6 +3158,23 @@ function initTouch() {
   });
 }
 
+// Открыт по ссылке-вызову: если есть сейв — входим в мир и открываем вызов,
+// иначе просим сначала завести братву (ссылка в чате остаётся — вернётся позже)
+function handlePvpDeepLink(id) {
+  const hasSave = (() => {
+    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.party && d.party.length; }
+    catch (e) { return false; }
+  })();
+  if (hasSave && loadGame()) {
+    document.getElementById('title').classList.add('hidden');
+    G.state = 'world';
+    updateHUD();
+    openPvpFromLink(id);
+  } else {
+    toast('⚔️ Сначала заведи братву, потом открой вызов по ссылке ещё раз.');
+  }
+}
+
 function main() {
   canvas = document.getElementById('game');
   ctx = canvas.getContext('2d');
@@ -3180,6 +3199,9 @@ function main() {
   netFetchRival();   // предзагрузка «живого» соперника
   netCheckUnlock();  // куплена ли загрузка спрайтов (кэшируется локально)
   netCheckScoot();   // куплен ли электросамокат
+
+  // запуск по deep-link на PvP-вызов (?startapp=pvp<id>)
+  if (IS_TMA && /^pvp[a-z0-9]+$/i.test(START_PARAM)) handlePvpDeepLink(START_PARAM.slice(3));
 
   // PWA: офлайн-кэш (только по http/https — с file:// SW не работает)
   if ('serviceWorker' in navigator && location.protocol.startsWith('http')) {

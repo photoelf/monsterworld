@@ -211,6 +211,117 @@ function pvpFinishFlow(payload) {
   pvpShowReplay(r.sim, r.mySide, null);
 }
 
+// ---------- PvP через Telegram (deep-link, без кодов) ----------
+
+// Награда победителю (проигравший — без потерь). Начисляется КЛИЕНТОМ по
+// вердикту симуляции, один раз на вызов (флаг pvpgot:<id> в usedTrades).
+function pvpAward(id, sim, mySide, foeTeam) {
+  if (G.usedTrades.has('pvpgot:' + id)) return;
+  G.usedTrades.add('pvpgot:' + id);
+  if (sim.result === mySide) {
+    const avg = Math.round(foeTeam.reduce((s, m) => s + (m.level | 0), 0) / foeTeam.length) || 5;
+    const money = 50 + avg * 8;
+    G.money += money;
+    const expEach = avg * 12;
+    for (const m of G.party) if (m.hp > 0) grantExp(m, expEach);
+    sfx('level');
+    toast('🥇 Победа в PvP! +' + money + '₴ и опыт братве.');
+  }
+  updateHUD();
+  saveGame();
+}
+
+// Кнопка «Вызвать через Telegram»: создаём вызов на сервере и открываем share
+function pvpTgChallengeFlow() {
+  friendError('');
+  const main = document.getElementById('friend-main');
+  main.innerHTML = '';
+  if (!IS_TMA) { friendError('Вызов через Telegram работает только в мини-аппе.'); return; }
+  if (!G.party.length) { friendError('Нужна братва!'); return; }
+  const info = document.createElement('div');
+  info.textContent = 'Создаём вызов…';
+  main.appendChild(info);
+  const team = G.party.map(tradeMonDump);
+  const nonce = ((Math.random() * 4294967296) >>> 0).toString(16);
+  netPvpCreate(team, nonce, id => {
+    if (G.state !== 'friend') return;
+    if (!id) { main.innerHTML = ''; friendError('Не удалось создать вызов — попробуй позже.'); return; }
+    main.innerHTML = '';
+    const b = document.createElement('button');
+    b.textContent = '📤 Отправить вызов контакту / в чат';
+    b.onclick = () => tgSharePvp(id);
+    main.appendChild(b);
+    const hint = document.createElement('div');
+    hint.style.cssText = 'opacity:.85;font-size:12px;margin-top:8px;line-height:1.5;';
+    hint.innerHTML = 'Кто первым откроет ссылку и примет — тот и соперник.<br>' +
+      'Когда примут, тебе придёт пуш «Смотреть бой». Проигравший ничего не теряет.';
+    main.appendChild(hint);
+  });
+}
+
+// Открыть вызов по deep-link (start_param = pvp<id>): панель друзей + flow
+function openPvpFromLink(id) {
+  if (G.state !== 'world') return;
+  toggleFriendPanel();
+  const main = document.getElementById('friend-main');
+  main.innerHTML = '<div>Загружаем вызов…</div>';
+  friendError('');
+  netPvpGet(id, ch => {
+    if (G.state !== 'friend') return;
+    if (!ch) { main.innerHTML = ''; friendError('Вызов не найден или истёк.'); return; }
+    pvpTgHandle(id, ch);
+  });
+}
+
+// Обработать состояние вызова: моя сторона A (смотрю результат) / B (принять) / чужой
+function pvpTgHandle(id, ch) {
+  const main = document.getElementById('friend-main');
+  main.innerHTML = '';
+
+  // Я — отправитель: показать результат, когда соперник принял
+  if (ch.mySide === 'A') {
+    if (ch.status !== 'done' || !ch.teamB) { friendError('Соперник ещё не принял вызов. Загляни позже.'); return; }
+    const seed = pvpSeed(id, ch.nonceA, ch.nonceB, ch.teamA, ch.teamB);
+    const sim = pvpSimulate(ch.teamA, ch.teamB, seed);
+    if (!G.usedTrades.has('pvpgot:' + id)) { G.stats.pvpBattles++; if (sim.result === 'A') G.stats.pvpWins++; }
+    pvpAward(id, sim, 'A', ch.teamB);
+    pvpShowReplay(sim, 'A', null);
+    return;
+  }
+
+  // Я уже принял этот вызов (сторона B) — просто показать бой снова
+  if (ch.mySide === 'B' && ch.teamB) {
+    const seed = pvpSeed(id, ch.nonceA, ch.nonceB, ch.teamA, ch.teamB);
+    pvpShowReplay(pvpSimulate(ch.teamA, ch.teamB, seed), 'B', null);
+    return;
+  }
+
+  // Чужой вызов
+  if (ch.status !== 'open') { friendError('Этот вызов уже принял другой игрок.'); return; }
+  if (!G.party.length) { friendError('Нужна братва, чтобы принять вызов!'); return; }
+  const title = document.createElement('b');
+  title.style.color = 'var(--ui-accent)';
+  title.textContent = '⚔️ ' + ch.fromNick + ' вызывает на бой! Его братва (' + ch.teamA.length + '):';
+  main.appendChild(title);
+  ch.teamA.forEach(md => main.appendChild(friendMonRow(md)));
+  const btn = document.createElement('button');
+  btn.textContent = '⚔️ Принять текущей братвой (' + G.party.length + ')';
+  btn.onclick = () => {
+    btn.disabled = true;
+    const myTeam = G.party.map(tradeMonDump);
+    const nonce = ((Math.random() * 4294967296) >>> 0).toString(16);
+    const seed = pvpSeed(id, ch.nonceA, nonce, ch.teamA, myTeam);
+    const sim = pvpSimulate(ch.teamA, myTeam, seed);
+    netPvpAccept(id, myTeam, nonce, sim.result, ok => {
+      if (!ok) { friendError('Не вышло — вызов уже приняли раньше тебя.'); return; }
+      G.stats.pvpBattles++; if (sim.result === 'B') G.stats.pvpWins++;
+      pvpAward(id, sim, 'B', ch.teamA);
+      pvpShowReplay(sim, 'B', null);
+    });
+  };
+  main.appendChild(btn);
+}
+
 let _pvpTimer = null;
 
 function pvpShowReplay(sim, mySide, responseCode) {

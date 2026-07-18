@@ -213,6 +213,82 @@ export default {
       return json({ snap: null });
     }
 
+    // --- PvP через Telegram: создать вызов ---
+    // A шлёт свою команду; вызов живёт в KV, делится deep-link'ом в TG.
+    if (url.pathname === '/pvp/create' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({ err: 'bad id' }, 400);
+      const team = Array.isArray(body.team) ? body.team.slice(0, 6).map(validMon).filter(Boolean) : [];
+      if (!team.length) return json({ err: 'empty team' }, 400);
+      const id = crypto.randomUUID().replace(/-/g, '').slice(0, 12);
+      const ch = {
+        fromKey: b.key, fromTg: b.tg, fromNick: sanitizeNick(body.nick),
+        teamA: team, nonceA: String(body.nonce || '').replace(/[^a-z0-9]/gi, '').slice(0, 16) || '0',
+        status: 'open', ts: Date.now(),
+      };
+      await env.SNAPS.put('pvp:' + id, JSON.stringify(ch), { expirationTtl: 3 * 86400 });
+      return json({ id });
+    }
+
+    // --- PvP: прочитать вызов (для показа/боя); mySide вычисляется по initData ---
+    // ch — id вызова, id — clientId покупателя (для buyerKey), не путать
+    if (url.pathname === '/pvp/get' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.ch);
+      const raw = await env.SNAPS.get('pvp:' + id);
+      if (!raw) return json({ err: 'not found' }, 404);
+      const ch = JSON.parse(raw);
+      const b = await buyerKey(env, body);
+      let mySide = null;
+      if (b.key && b.key === ch.fromKey) mySide = 'A';
+      else if (b.key && ch.toKey && b.key === ch.toKey) mySide = 'B';
+      return json({
+        status: ch.status, mySide,
+        fromNick: ch.fromNick, toNick: ch.toNick || null,
+        teamA: ch.teamA, nonceA: ch.nonceA,
+        teamB: ch.teamB || null, nonceB: ch.nonceB || null,
+        result: ch.result || null,
+      });
+    }
+
+    // --- PvP: принять вызов (B шлёт свою команду и вычисленный вердикт) ---
+    // ch — id вызова, id — clientId покупателя (для buyerKey)
+    if (url.pathname === '/pvp/accept' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.ch);
+      const raw = await env.SNAPS.get('pvp:' + id);
+      if (!raw) return json({ err: 'not found' }, 404);
+      const ch = JSON.parse(raw);
+      if (ch.status !== 'open') return json({ err: 'taken' }, 409);
+      const b = await buyerKey(env, body);
+      if (badBuyer(b)) return json({ err: 'bad id' }, 400);
+      if (b.key === ch.fromKey) return json({ err: 'own challenge' }, 400);
+      const team = Array.isArray(body.team) ? body.team.slice(0, 6).map(validMon).filter(Boolean) : [];
+      if (!team.length) return json({ err: 'empty team' }, 400);
+      ch.toKey = b.key; ch.toTg = b.tg; ch.toNick = sanitizeNick(body.nick);
+      ch.teamB = team; ch.nonceB = String(body.nonce || '').replace(/[^a-z0-9]/gi, '').slice(0, 16) || '0';
+      ch.result = (body.result === 'A' || body.result === 'B' || body.result === 'draw') ? body.result : 'draw';
+      ch.status = 'done';
+      await env.SNAPS.put('pvp:' + id, JSON.stringify(ch), { expirationTtl: 3 * 86400 });
+      // пуш отправителю (best-effort): бот пишет только тем, кто с ним в диалоге
+      if (ch.fromTg) {
+        const gameUrl = 'https://t.me/poketmons_bot?startapp=pvp' + id;
+        await tgApi(env, 'sendMessage', {
+          chat_id: ch.fromTg,
+          text: '⚔️ ' + ch.toNick + ' принял твой вызов в Карманной Братве! Открой игру — смотри бой.',
+          reply_markup: { inline_keyboard: [[{ text: '👊 Смотреть бой', url: gameUrl }]] },
+        }).catch(() => {});
+      }
+      return json({ ok: true });
+    }
+
     // --- счёт на покупку (Telegram Stars); product: spr|mon|scoot|acc (+item) ---
     // VIP получает товар бесплатно, но ТОЛЬКО по явному нажатию (granted:true) —
     // авто-выдачи при проверке статуса больше нет.

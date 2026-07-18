@@ -68,6 +68,49 @@ function netTakeRival() {
 // tg-привязку клиент перепроверил сервер, а не доверял старой авто-VIP-выдаче).
 function tgInitData() { return (typeof TG !== 'undefined' && TG && TG.initData) || null; }
 
+// ===== PvP через Telegram (вызов по deep-link, без копирования кодов) =====
+
+function _pvpNick() { return (typeof playerNick === 'string' && playerNick) || 'Тренер'; }
+
+// Создать вызов: cb(id) при успехе, cb(null) при ошибке
+function netPvpCreate(team, nonce, cb) {
+  if (!API_BASE) { cb(null); return; }
+  fetch(API_BASE + '/pvp/create', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: netClientId(), initData: tgInitData(), nick: _pvpNick(), team, nonce }),
+  })
+    .then(r => r.json())
+    .then(d => cb(d && d.id ? d.id : null))
+    .catch(() => cb(null));
+}
+
+// Прочитать вызов (status, mySide, команды): cb(challenge|null)
+function netPvpGet(id, cb) {
+  if (!API_BASE) { cb(null); return; }
+  fetch(API_BASE + '/pvp/get', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: netClientId(), ch: id, initData: tgInitData() }),
+  })
+    .then(r => r.json())
+    .then(d => cb(d && !d.err ? d : null))
+    .catch(() => cb(null));
+}
+
+// Принять вызов (B): cb(true|false)
+function netPvpAccept(id, team, nonce, result, cb) {
+  if (!API_BASE) { cb(false); return; }
+  fetch(API_BASE + '/pvp/accept', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ id: netClientId(), ch: id, initData: tgInitData(), nick: _pvpNick(), team, nonce, result }),
+  })
+    .then(r => r.json())
+    .then(d => cb(!!(d && d.ok)))
+    .catch(() => cb(false));
+}
+
 // ===== Покупка загрузки кастомных спрайтов (Telegram Stars) =====
 
 const SPRITE_PRICE = 10;   // держать в синхроне с воркером (SPRITE_PRICE_STARS)
