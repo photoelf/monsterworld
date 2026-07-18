@@ -1900,6 +1900,14 @@ function renderShop() {
         if (IS_TMA) netBuyScoot(() => { toast('🛴 Электросамокат твой! Включи в настройках.'); renderShop(); });
         else toast('Покупка за Stars — в Telegram: @poketmons_bot');
       });
+    shopSpecialRow(rows, '💾 Режим сейвскамера', 'Сохраняйся и откатывайся прямо в бою — переигрывай любой удар. Навсегда.',
+      scumUnlocked ? '<span style="opacity:.7">куплено</span>' : SCUM_PRICE + '⭐',
+      scumUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      () => {
+        if (scumUnlocked) { toast('💾 Уже куплено — вкл/выкл в настройках.'); return; }
+        if (IS_TMA) netBuyScum(() => { setScum(true); toast('💾 Сейвскамер твой и включён! Кнопки 💾/⏪ — в бою.'); renderShop(); });
+        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
+      });
     return;
   }
 
@@ -2364,17 +2372,14 @@ function renderSettings() {
   } else {
     joyBtn.style.display = 'none';
   }
-  // режим сейвскамера: премиум за Stars; куплен — тумблер (сейв/откат в самом бою)
+  // режим сейвскамера — тумблер только у купивших (покупка в лавке, «Особое»)
   const scumBtn = document.getElementById('set-scum');
   if (scumUnlocked) {
+    scumBtn.style.display = '';
     scumBtn.textContent = SCUM_ON ? '💾 Сейвскам: вкл' : '💾 Сейвскам: выкл';
     scumBtn.onclick = () => { setScum(!SCUM_ON); renderSettings(); };
   } else {
-    scumBtn.textContent = '🔒 Сейвскам · ' + SCUM_PRICE + '⭐';
-    scumBtn.onclick = () => {
-      if (IS_TMA) netBuyScum(() => { toast('💾 Режим сейвскамера открыт!'); renderSettings(); });
-      else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-    };
+    scumBtn.style.display = 'none';
   }
 
   // тумблер электросамоката — только у купивших
