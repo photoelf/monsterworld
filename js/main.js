@@ -1037,7 +1037,7 @@ function friendProcessCode() {
       const r = tradeCompleteOffer(payload);
       if (r.err) { friendError(r.err); return; }
       sfx('catch');
-      toast('🤝 Обмен! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в кармане (B).' : ' теперь с тобой.'));
+      toast('🤝 Обмен! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в кармане' + keyHint('B') + '.' : ' теперь с тобой.'));
       renderFriendPanel();
       friendShowCode('Финальный код — ОБЯЗАТЕЛЬНО отправь другу, иначе он не получит братишку:', r.code);
     };
@@ -1049,7 +1049,7 @@ function friendProcessCode() {
   const r = tradeFinalize(payload);
   if (r.err) { friendError(r.err); return; }
   sfx('catch');
-  toast('🤝 Обмен завершён! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в кармане (B).' : ' теперь с тобой.'));
+  toast('🤝 Обмен завершён! ' + monName(r.received) + (r.dest === 'store' ? ' ждёт в кармане' + keyHint('B') + '.' : ' теперь с тобой.'));
   renderFriendPanel();
   const done = document.createElement('b');
   done.style.color = 'var(--ui-accent)';
@@ -1157,7 +1157,7 @@ function hatchEgg() {
   G.stats.eggsHatched++;
   sfx('catch');
   toast('🐣 Из яйца вылупился ' + (baby.shiny ? '✨' : '') + monName(baby) +
-    (dest === 'store' ? '! Он ждёт в кармане (B).' : '!'));
+    (dest === 'store' ? '! Он ждёт в кармане' + keyHint('B') + '.' : '!'));
   updateHUD();
   saveGame();
 }
@@ -1469,15 +1469,8 @@ function applyDesktopZoom() {
   canvas.style.width = w;
 }
 
-function initDesktopFullscreen() {
+function initDesktopZoom() {
   if (IS_MOBILE) return;
-  const btn = document.getElementById('fs-btn');
-  btn.style.display = 'block';
-  const toggle = () => {
-    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
-    else document.documentElement.requestFullscreen().catch(() => {});
-  };
-  btn.onclick = toggle;
   applyDesktopZoom();
   window.addEventListener('resize', applyDesktopZoom);
   document.addEventListener('fullscreenchange', applyDesktopZoom);
@@ -1786,8 +1779,10 @@ function renderMap() {
   travel.innerHTML = G.fountains.length ? '' : '<span style="opacity:.6;font-size:12px">Коснись фонтана в городе, чтобы открыть телепорт к нему.</span>';
   for (const f of G.fountains.slice(-12)) {
     const b = document.createElement('button');
-    const dist = Math.round(Math.hypot(f.x - G.player.x, f.y - G.player.y));
-    b.textContent = '⛲ (' + Math.round(f.x) + ', ' + Math.round(f.y) + ') · ' + dist + ' т.';
+    const dist = Math.hypot(f.x - G.player.x, f.y - G.player.y);
+    // в каждом городе ровно один фонтан — подписываем именем города, 1 км = 10 тайлов
+    const city = World.cityInfoAt(f.x, f.y);
+    b.textContent = '⛲ ' + (city ? city.name : 'Дикие места') + ' · ' + (dist / 10).toFixed(1) + ' км';
     b.onclick = () => travelToFountain(f);
     travel.appendChild(b);
   }
@@ -1881,9 +1876,18 @@ function monMiniCanvas(m, size) {
   cv.width = size; cv.height = size;
   const c = cv.getContext('2d');
   c.imageSmoothingEnabled = false;
-  const spr = monSprite(m);
-  const d = monSpriteDims(m, spr);
-  c.drawImage(spr, Math.floor((size - d.w) / 2), Math.floor((size - d.h) / 2), d.w, d.h);
+  const draw = () => {
+    c.clearRect(0, 0, size, size);
+    const spr = monSprite(m);
+    const d = monSpriteDims(m, spr);
+    c.drawImage(spr, Math.floor((size - d.w) / 2), Math.floor((size - d.h) / 2), d.w, d.h);
+  };
+  draw();
+  // кастомный PNG (data-URL) грузится асинхронно: сейчас нарисован процедурный
+  // фоллбэк — дорисуем настоящий облик, как только Image догрузится
+  if (m.customSprite && !customSpriteImg(m.customSprite)) {
+    _customImgs.get(m.customSprite).addEventListener('load', draw, { once: true });
+  }
   return cv;
 }
 
@@ -2048,6 +2052,67 @@ function toggleAchievements() {
     rows.appendChild(row);
   }
   panel.classList.remove('hidden');
+}
+
+// ===== Настройки =====
+
+function toggleSettings() {
+  const panel = document.getElementById('settings-panel');
+  if (G.state === 'settings') {
+    panel.classList.add('hidden');
+    G.state = 'world';
+    return;
+  }
+  if (G.state !== 'world') return;
+  G.state = 'settings';
+  renderSettings();
+  panel.classList.remove('hidden');
+}
+
+// На мобиле клавиатуры нет — убираем «(Esc)», «(Tab)» и т.п. со статичных кнопок
+function stripKeyHints() {
+  if (!IS_MOBILE) return;
+  document.querySelectorAll('button').forEach(b => {
+    if (b.childElementCount) return;
+    b.textContent = b.textContent.replace(/\s*\((?:Esc|Tab|[A-Z]|\d+|,)\)\s*$/, '');
+  });
+}
+
+function renderSettings() {
+  const fsBtn = document.getElementById('set-fullscreen');
+  if (IS_MOBILE) fsBtn.style.display = 'none';
+  else fsBtn.onclick = () => {
+    if (document.fullscreenElement) document.exitFullscreen().catch(() => {});
+    else document.documentElement.requestFullscreen().catch(() => {});
+  };
+  const sndBtn = document.getElementById('set-sound');
+  sndBtn.textContent = SOUND_ON ? '🔊 Звук: вкл' : '🔇 Звук: выкл';
+  sndBtn.onclick = () => {
+    setSoundOn(!SOUND_ON);
+    sfx('pickup'); // слышно сразу, что звук вернулся (при выкл — тишина)
+    renderSettings();
+  };
+  const urlForce = /[?&](desktop|mobile)/.test(location.search);
+  const note = document.getElementById('set-mode-note');
+  note.textContent = urlForce
+    ? 'Режим зафиксирован параметром в адресе (?desktop/?mobile) — переключение уберёт его.'
+    : 'Смена режима перезагрузит игру.';
+  document.querySelectorAll('#set-mode button').forEach(b => {
+    const active = (FORCED_MODE || '') === b.dataset.mode && !urlForce;
+    b.style.borderColor = active ? 'var(--ui-accent)' : '';
+    b.style.color = active ? 'var(--ui-accent)' : '';
+    b.onclick = () => {
+      if (active) return;
+      const mode = b.dataset.mode;
+      try { mode ? localStorage.setItem('mw-mode', mode) : localStorage.removeItem('mw-mode'); } catch (e) {}
+      saveGame();
+      // чистим отладочные форс-параметры, иначе они переспорят настройку
+      const u = new URL(location.href);
+      u.searchParams.delete('desktop');
+      u.searchParams.delete('mobile');
+      location.replace(u.href);
+    };
+  });
 }
 
 // ===== Экспорт сейва =====
@@ -2474,6 +2539,7 @@ function initInput() {
     if (e.code === 'KeyF' && G.state === 'world') { tryFishing(); return; }
     if (e.code === 'KeyT' && (G.state === 'world' || G.state === 'friend')) { toggleFriendPanel(); return; }
     if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
+    if (e.code === 'Comma' && (G.state === 'world' || G.state === 'settings')) { toggleSettings(); return; }
     if (e.key === 'Escape') {
       if (G.state === 'party') { togglePartyPanel(); return; }
       if (G.state === 'mondetail') { closeMonDetail(); return; }
@@ -2488,6 +2554,8 @@ function initInput() {
       if (G.state === 'board') { closeBoard(); return; }
       if (G.state === 'friend') { toggleFriendPanel(); return; }
       if (G.state === 'storage') { toggleStorage(); return; }
+      if (G.state === 'settings') { toggleSettings(); return; }
+      if (G.state === 'world') { toggleSettings(); return; }
     }
     keys.add(e.code);
     keys.add(e.key);
@@ -2525,6 +2593,7 @@ function initTitle() {
   document.getElementById('btn-dex-close').onclick = () => toggleDex();
   document.getElementById('btn-map-close').onclick = () => toggleMap();
   document.getElementById('btn-ach-close').onclick = () => toggleAchievements();
+  document.getElementById('btn-settings-close').onclick = () => toggleSettings();
   document.getElementById('btn-teach-close').onclick = () => closeTeach();
   document.getElementById('btn-nursery-close').onclick = () => closeNursery();
   document.getElementById('btn-board-close').onclick = () => closeBoard();
@@ -2563,10 +2632,18 @@ function initTitle() {
 
 // ===== Тач-управление =====
 
+// Принудительный режим из настроек: 'desktop' | 'mobile' | null (авто).
+// Слабее URL-параметров (?desktop/?mobile — отладка), сильнее автодетекта.
+const FORCED_MODE = (() => {
+  try { const v = localStorage.getItem('mw-mode'); return v === 'desktop' || v === 'mobile' ? v : null; }
+  catch (e) { return null; }
+})();
+
 // let — внутри Telegram initTelegram() дожимает в true уже по данным SDK
 // (hash-признак не всегда доживает до нас во всех клиентах Telegram)
 let IS_MOBILE = /[?&]desktop/.test(location.search) ? false :
                 /[?&]mobile/.test(location.search) ? true :
+                FORCED_MODE ? FORCED_MODE === 'mobile' :
                 /tgWebApp/i.test(location.hash) || /tgWebApp/i.test(location.search) ||
                 'ontouchstart' in window || navigator.maxTouchPoints > 0 ||
                 (window.matchMedia && matchMedia('(pointer: coarse)').matches);
@@ -2620,7 +2697,7 @@ function initTouch() {
   });
   document.getElementById('t-fish').addEventListener('pointerdown', e => { e.preventDefault(); tryFishing(); });
   // меню-кнопки
-  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel };
+  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, settings: toggleSettings };
   document.querySelectorAll('#touch-menu .tbtn').forEach(btn => {
     btn.addEventListener('pointerdown', e => { e.preventDefault(); panelFns[btn.dataset.panel](); });
   });
@@ -2644,7 +2721,8 @@ function main() {
   initInput();
   initTitle();
   initTouch();
-  initDesktopFullscreen();
+  initDesktopZoom();
+  stripKeyHints();
   updateHUD();
   netFetchRival();   // предзагрузка «живого» соперника
   netCheckUnlock();  // куплена ли загрузка спрайтов (кэшируется локально)

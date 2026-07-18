@@ -13,8 +13,8 @@ function initTelegram() {
   if (!IS_TMA) return;
 
   // внутри Telegram окно телефонных пропорций на любой платформе —
-  // всегда мобильный вид (кроме явного форса ?desktop)
-  if (!IS_MOBILE && !/[?&]desktop/.test(location.search)) IS_MOBILE = true;
+  // всегда мобильный вид (кроме явного форса ?desktop или настройки)
+  if (!IS_MOBILE && !/[?&]desktop/.test(location.search) && FORCED_MODE !== 'desktop') IS_MOBILE = true;
 
   TG.ready();
   TG.expand();

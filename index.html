@@ -104,14 +104,6 @@
     background: #111; color: var(--ui-text);
     border: 2px solid var(--ui-border); border-radius: 4px; padding: 7px 10px; width: 220px;
   }
-  /* кнопка фулскрина (только десктопный режим) */
-  #fs-btn {
-    position: fixed; right: 14px; bottom: 14px; z-index: 70;
-    display: none; cursor: pointer; user-select: none;
-    background: rgba(38,38,54,.85); border: 2px solid var(--ui-border); border-radius: 8px;
-    font-size: 20px; padding: 5px 11px; color: var(--ui-text);
-  }
-  #fs-btn:hover { border-color: var(--ui-accent); color: var(--ui-accent); }
   /* ---------- Титульный экран ---------- */
   #title { padding: 0 20px; }
   #title-logo {
@@ -539,6 +531,23 @@
     <button id="btn-ach-close">Закрыть (O)</button>
   </div>
 
+  <!-- Настройки -->
+  <div id="settings-panel" class="overlay hidden">
+    <h1 style="font-size:22px;">⚙️ Настройки</h1>
+    <div style="display:flex;flex-direction:column;gap:14px;width:min(340px,94vw);">
+      <button id="set-sound">🔊 Звук: вкл</button>
+      <button id="set-fullscreen">⛶ На весь экран</button>
+      <div style="text-align:left;font-size:13px;opacity:.85;">Режим интерфейса:</div>
+      <div id="set-mode" style="display:flex;flex-direction:column;gap:8px;">
+        <button data-mode="">Авто</button>
+        <button data-mode="mobile">📱 Мобильный</button>
+        <button data-mode="desktop">🖥 Десктоп</button>
+      </div>
+      <div id="set-mode-note" style="font-size:12px;opacity:.6;"></div>
+    </div>
+    <button id="btn-settings-close">Закрыть (Esc)</button>
+  </div>
+
   <!-- Братва -->
   <div id="party-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Братва</h1>
@@ -565,9 +574,6 @@
     <button id="btn-storage-close">Закрыть (B)</button>
   </div>
 
-  <!-- Фулскрин (десктоп) -->
-  <div id="fs-btn" title="На весь экран">⛶</div>
-
   <!-- Тач-управление -->
   <div id="touch-ui" class="hidden">
     <div id="touch-menu">
@@ -576,6 +582,7 @@
       <div class="tbtn" data-panel="dex">📕</div>
       <div class="tbtn" data-panel="ach">🏆</div>
       <div class="tbtn" data-panel="friend">🤝</div>
+      <div class="tbtn" data-panel="settings">⚙️</div>
     </div>
     <div id="joy-base"><div id="joy-knob"></div></div>
     <div id="touch-actions">

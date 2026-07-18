@@ -66,7 +66,18 @@ function irange(rng, a, b) { return a + Math.floor(rng() * (b - a + 1)); }
 function clamp(v, a, b) { return v < a ? a : v > b ? b : v; }
 function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 
+// Подсказка клавиши для текстов: на мобиле клавиатуры нет — пустая строка
+function keyHint(k) { return IS_MOBILE ? '' : ' (' + k + ')'; }
+
 // ===== Простые звуковые эффекты (WebAudio) =====
+
+// Глобальный выключатель звука (страница настроек), живёт в localStorage
+let SOUND_ON = true;
+try { SOUND_ON = localStorage.getItem('mw-sound') !== '0'; } catch (e) {}
+function setSoundOn(v) {
+  SOUND_ON = !!v;
+  try { localStorage.setItem('mw-sound', v ? '1' : '0'); } catch (e) {}
+}
 
 let _ac = null;
 function _tone(freq, when, dur, type, vol) {
@@ -79,6 +90,7 @@ function _tone(freq, when, dur, type, vol) {
   o.stop(_ac.currentTime + when + dur + 0.02);
 }
 function sfx(kind) {
+  if (!SOUND_ON) return;
   try {
     _ac = _ac || new (window.AudioContext || window.webkitAudioContext)();
     switch (kind) {

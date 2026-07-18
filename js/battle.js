@@ -397,7 +397,7 @@ const Battle = {
             ]);
             if (choice === 0) {
               G.storage.push(em);
-              await this.say(monName(em) + ' отправлен в карман (B).');
+              await this.say(monName(em) + ' отправлен в карман' + keyHint('B') + '.');
             } else {
               this.note('Кто уступит место? (Назад — нового в карман)');
               const ri = await this.menu(party.map(m => ({
@@ -410,7 +410,7 @@ const Battle = {
                 party[ri] = em;
               } else {
                 G.storage.push(em);
-                await this.say(monName(em) + ' отправлен в карман (B).');
+                await this.say(monName(em) + ' отправлен в карман' + keyHint('B') + '.');
               }
             }
           }
