@@ -248,6 +248,16 @@ function validCustomSprite(s) {
   return typeof s === 'string' && s.startsWith('data:image/png;base64,') && s.length <= 12000 ? s : null;
 }
 
+// Санитайзеры недоверенного текста (клички/имена умений из чужих кодов обмена
+// и импортированных сейвов): рендерятся через innerHTML — режем HTML-опасное.
+// Зеркалят фильтры воркера, т.к. коды обмена/сейва идут мимо API.
+function safeNick(s) {
+  return s ? (String(s).replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 12) || null) : null;
+}
+function safeMoveName(s) {
+  return String(s || 'Удар').replace(/[<>&"'`]/g, '').slice(0, 40) || 'Удар';
+}
+
 function dumpOwnedMon(m) {
   return {
     speciesSeed: m.speciesSeed, stage: m.stage, level: m.level,
@@ -258,10 +268,14 @@ function dumpOwnedMon(m) {
 }
 
 function reviveOwnedMon(md) {
+  // moves/nick могут прийти из импортированного кода сейва (недоверенный ввод) —
+  // чистим имена, т.к. они уходят в innerHTML (см. safeNick/safeMoveName)
+  const moves = (Array.isArray(md.moves) ? md.moves : []).map(mv =>
+    Object.assign({}, mv, { name: safeMoveName(mv && mv.name) }));
   const m = {
     speciesSeed: md.speciesSeed >>> 0, stage: md.stage, level: md.level,
-    exp: md.exp, hp: md.hp, moves: md.moves, status: md.status || null,
-    shiny: !!md.shiny, nick: md.nick || null, charm: md.charm || null,
+    exp: md.exp, hp: md.hp, moves, status: md.status || null,
+    shiny: !!md.shiny, nick: safeNick(md.nick), charm: md.charm || null,
     customSprite: validCustomSprite(md.customSprite), palette: validPalette(md.palette),
   };
   for (const mv of m.moves) {
@@ -790,7 +804,7 @@ function tradeMonRevive(md) {
   const level = clamp(md.level | 0, 1, 70);
   const m = makeMonster(seed, stage, level);
   m.shiny = !!md.shiny;
-  m.nick = md.nick ? String(md.nick).slice(0, 12) : null;
+  m.nick = safeNick(md.nick);
   m.customSprite = validCustomSprite(md.customSprite);
   m.palette = validPalette(md.palette);
   m.exp = clamp(md.exp | 0, 0, expToNext(level) - 1);
@@ -799,7 +813,7 @@ function tradeMonRevive(md) {
       const power = clamp(mv.power | 0, 20, 115);
       const maxPp = clamp((mv.maxPp | 0) || ppForPower(power), 4, 20);
       return {
-        name: String(mv.name || 'Удар').slice(0, 40),
+        name: safeMoveName(mv.name),
         type: TYPE_LIST.includes(mv.type) ? mv.type : 'normal',
         power,
         acc: clamp(mv.acc | 0, 60, 100),

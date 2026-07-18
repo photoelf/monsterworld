@@ -11,6 +11,10 @@
 //
 // Снапшоты валидируются и здесь, и на клиенте (tradeMonRevive пересчитывает
 // статы из вида — «нарисовать» имбу нельзя). Ник — только буквы/цифры/._- .
+//
+// Безопасность: read-эндпоинты (/unlock, /accs, /mongen) под rateLimited;
+// verifyInitData проверяет подпись HMAC + срок auth_date (24ч). VIP/анлоки
+// завязаны на подписанный tg-id; для TMA покупки пока по clientId (см. планы).
 
 const SPRITE_PRICE_STARS = 10;   // цена разблокировки кастомных спрайтов, XTR
 const WARDROBE_PRICE_STARS = 15; // цена гардероба игрока, XTR
@@ -105,6 +109,10 @@ async function verifyInitData(env, initData) {
     const sig = await hmac(secret, enc.encode(dcs));
     const hex = [...sig].map(b => b.toString(16).padStart(2, '0')).join('');
     if (hex !== hash) return null;
+    // подпись валидна — теперь ограничим срок жизни (перехваченный initData не
+    // должен работать вечно). auth_date подписан, так что проверяем после hash.
+    const authDate = parseInt(p.get('auth_date') || '0', 10);
+    if (!authDate || Date.now() / 1000 - authDate > 86400) return null; // старше 24 ч
     return JSON.parse(p.get('user') || 'null');
   } catch (e) { return null; }
 }
@@ -222,6 +230,7 @@ export default {
 
     // --- статус покупки (GET — совместимость со старыми клиентами) ---
     if (url.pathname === '/unlock' && req.method === 'GET') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       const id = cleanId(url.searchParams.get('id'));
       if (id.length < 8) return json({ unlocked: false });
       return json({ unlocked: !!(await env.SNAPS.get('unlock:' + id)) });
@@ -229,6 +238,7 @@ export default {
 
     // --- статус покупки + VIP по подписанному Telegram-id; product: spr|wrd ---
     if (url.pathname === '/unlock' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.id);
@@ -249,6 +259,7 @@ export default {
 
     // --- гардероб: какие аксессуары куплены; VIP и старый wrd-анлок — все ---
     if (url.pathname === '/accs' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.id);
@@ -266,6 +277,7 @@ export default {
 
     // --- генератор: сколько оплаченных генераций; VIP — без ограничений ---
     if (url.pathname === '/mongen' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.id);
