@@ -69,6 +69,18 @@ function cap(s) { return s.charAt(0).toUpperCase() + s.slice(1); }
 // Подсказка клавиши для текстов: на мобиле клавиатуры нет — пустая строка
 function keyHint(k) { return IS_MOBILE ? '' : ' (' + k + ')'; }
 
+// Сторона джойстика на тач-раскладке ('right' по умолчанию — правой рукой удобнее)
+let JOY_SIDE = 'right';
+try { JOY_SIDE = localStorage.getItem('mw-joyside') === 'left' ? 'left' : 'right'; } catch (e) {}
+function setJoySide(v) {
+  JOY_SIDE = v === 'left' ? 'left' : 'right';
+  try { localStorage.setItem('mw-joyside', JOY_SIDE); } catch (e) {}
+  applyJoySide();
+}
+function applyJoySide() {
+  document.body.classList.toggle('joy-right', JOY_SIDE === 'right');
+}
+
 // ===== Простые звуковые эффекты (WebAudio) =====
 
 // Глобальный выключатель звука (страница настроек), живёт в localStorage

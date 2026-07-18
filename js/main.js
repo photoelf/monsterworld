@@ -2337,6 +2337,15 @@ function renderSettings() {
     sfx('pickup'); // слышно сразу, что звук вернулся (при выкл — тишина)
     renderSettings();
   };
+  // раскладка джойстика — только на тач-устройствах
+  const joyBtn = document.getElementById('set-joyside');
+  if (IS_MOBILE) {
+    joyBtn.style.display = '';
+    joyBtn.textContent = JOY_SIDE === 'right' ? '🕹 Стик справа, кнопки слева' : '🕹 Стик слева, кнопки справа';
+    joyBtn.onclick = () => { setJoySide(JOY_SIDE === 'right' ? 'left' : 'right'); renderSettings(); };
+  } else {
+    joyBtn.style.display = 'none';
+  }
   // тумблер электросамоката — только у купивших
   const scootBtn = document.getElementById('set-scooter');
   if (scootUnlocked) {
@@ -3194,6 +3203,7 @@ function main() {
   initTitle();
   initTouch();
   initDesktopZoom();
+  applyJoySide();
   stripKeyHints();
   updateHUD();
   netFetchRival();   // предзагрузка «живого» соперника
