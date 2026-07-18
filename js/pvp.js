@@ -338,20 +338,33 @@ function pvpShowReplay(sim, mySide, responseCode) {
   const resultLine = document.createElement('div');
   resultLine.style.cssText = 'font-size:16px;font-weight:bold;';
   main.appendChild(resultLine);
+  // кнопка «Скип» — сразу показать итог, не досматривая лог
+  const skipBtn = document.createElement('button');
+  skipBtn.textContent = '⏭ Скип';
+  main.appendChild(skipBtn);
 
   clearInterval(_pvpTimer);
   let i = 0;
+  const finish = () => {
+    clearInterval(_pvpTimer);
+    while (i < sim.log.length) {   // вывалить оставшиеся строки разом
+      const line = document.createElement('div');
+      line.textContent = sim.log[i].text;
+      list.appendChild(line);
+      i++;
+    }
+    list.scrollTop = list.scrollHeight;
+    const won = sim.result === mySide;
+    resultLine.style.color = sim.result === 'draw' ? '#e8c832' : won ? '#58d858' : '#e05050';
+    resultLine.textContent = sim.result === 'draw' ? '🤝 Ничья!' : won ? '🥇 ПОБЕДА!' : '💀 Поражение...';
+    sfx(won ? 'level' : 'faint');
+    skipBtn.remove();
+    if (responseCode) friendShowCode('Ответный код — отправь другу, он увидит тот же бой:', responseCode);
+  };
+  skipBtn.onclick = finish;
   const step = () => {
     if (G.state !== 'friend') { clearInterval(_pvpTimer); return; }
-    if (i >= sim.log.length) {
-      clearInterval(_pvpTimer);
-      const won = sim.result === mySide;
-      resultLine.style.color = sim.result === 'draw' ? '#e8c832' : won ? '#58d858' : '#e05050';
-      resultLine.textContent = sim.result === 'draw' ? '🤝 Ничья!' : won ? '🥇 ПОБЕДА!' : '💀 Поражение...';
-      sfx(won ? 'level' : 'faint');
-      if (responseCode) friendShowCode('Ответный код — отправь другу, он увидит тот же бой:', responseCode);
-      return;
-    }
+    if (i >= sim.log.length) { finish(); return; }
     const line = document.createElement('div');
     line.textContent = sim.log[i].text;
     list.appendChild(line);

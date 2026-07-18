@@ -336,6 +336,36 @@ function saveGame() {
   cloudSaveSoon(); // в Telegram — отложенная заливка в CloudStorage
 }
 
+// ===== Сейвскам: быстрый слот сохранения/отката =====
+
+const QUICK_KEY = 'mw-quicksave';
+
+// Тихий быстросейв (авто перед боем, если включён режим сейвскамера)
+function autoQuickSave() {
+  if (!SCUM_ON) return;
+  try { localStorage.setItem(QUICK_KEY, JSON.stringify(buildSaveData())); } catch (e) {}
+}
+
+function quickSave() {
+  try { localStorage.setItem(QUICK_KEY, JSON.stringify(buildSaveData())); } catch (e) {}
+  toast('💾 Быстрое сохранение готово.');
+}
+
+// Откат к быстрослоту. Работает только в мире (не рвём асинхронный бой)
+function quickLoad() {
+  if (G.state === 'battle') { toast('Откат доступен только вне боя.'); return; }
+  let raw = null;
+  try { raw = localStorage.getItem(QUICK_KEY); } catch (e) {}
+  if (!raw) { toast('Нет быстрого сохранения.'); return; }
+  try { localStorage.setItem(SAVE_KEY, raw); } catch (e) {}
+  if (loadGame()) {
+    document.getElementById('settings-panel').classList.add('hidden');
+    G.state = 'world';
+    updateHUD();
+    toast('⏪ Откат к быстрому сохранению!');
+  }
+}
+
 // Код сейва: JSON -> base64 (безопасно для юникода)
 function exportSaveCode() {
   return btoa(unescape(encodeURIComponent(JSON.stringify(buildSaveData()))));
@@ -602,6 +632,7 @@ function collides(x, y) {
 async function startTrainerBattle(tr) {
   if (G.state !== 'world') return;
   G.state = 'battle';
+  autoQuickSave();  // сейвскам: точка отката перед боем
   let team = World.trainerTeam(tr);
   let name = tr.name;
   // «живой» соперник: реальная команда другого игрока (уровни подогнаны под местность)
@@ -631,6 +662,7 @@ async function startTrainerBattle(tr) {
 async function startArenaBattle(master) {
   if (G.state !== 'world') return;
   G.state = 'battle';
+  autoQuickSave();  // сейвскам: точка отката перед боем
   const team = World.masterTeam(master);
   const result = await Battle.run({
     kind: 'trainer', foe: 'master', enemyParty: team, trainerName: master.name,
@@ -648,6 +680,7 @@ async function startArenaBattle(master) {
 // mode: undefined | 'nest' | 'fish' | 'shrine'
 async function startWildBattle(x, y, mode) {
   G.state = 'battle';
+  autoQuickSave();  // сейвскам: точка отката перед боем
   const rng = mulberry32((Math.random() * 4294967296) >>> 0);
   const env = {
     night: G.phase === 'night',
@@ -682,6 +715,7 @@ async function startWildBattle(x, y, mode) {
 async function startTowerRun(tw) {
   if (G.state !== 'world') return;
   G.state = 'battle';
+  autoQuickSave();  // сейвскам: точка отката перед боем
   let floor = 1, result;
   while (true) {
     const team = World.towerTeam(tw, floor);
@@ -2346,6 +2380,12 @@ function renderSettings() {
   } else {
     joyBtn.style.display = 'none';
   }
+  // режим сейвскамера: тумблер + кнопки быстросейва/отката
+  const scumBtn = document.getElementById('set-scum');
+  scumBtn.textContent = SCUM_ON ? '💾 Сейвскам: вкл' : '💾 Сейвскам: выкл';
+  scumBtn.onclick = () => { setScum(!SCUM_ON); if (SCUM_ON) autoQuickSave(); renderSettings(); };
+  document.getElementById('set-scum-actions').style.display = SCUM_ON ? 'flex' : 'none';
+
   // тумблер электросамоката — только у купивших
   const scootBtn = document.getElementById('set-scooter');
   if (scootUnlocked) {
@@ -3133,6 +3173,8 @@ function initTitle() {
   document.getElementById('btn-map-close').onclick = () => toggleMap();
   document.getElementById('btn-ach-close').onclick = () => toggleAchievements();
   document.getElementById('btn-settings-close').onclick = () => toggleSettings();
+  document.getElementById('set-quicksave').onclick = () => quickSave();
+  document.getElementById('set-quickload').onclick = () => quickLoad();
   document.getElementById('set-wardrobe').onclick = () => openWardrobe();
   document.getElementById('btn-wardrobe-close').onclick = () => closeWardrobe();
   document.getElementById('btn-mongen-close').onclick = () => closeMongen();

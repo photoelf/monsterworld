@@ -81,6 +81,14 @@ function applyJoySide() {
   document.body.classList.toggle('joy-right', JOY_SIDE === 'right');
 }
 
+// Режим сейвскамера: авто-быстросейв перед боем + ручной откат (mw-scum)
+let SCUM_ON = false;
+try { SCUM_ON = localStorage.getItem('mw-scum') === '1'; } catch (e) {}
+function setScum(v) {
+  SCUM_ON = !!v;
+  try { localStorage.setItem('mw-scum', v ? '1' : '0'); } catch (e) {}
+}
+
 // ===== Простые звуковые эффекты (WebAudio) =====
 
 // Глобальный выключатель звука (страница настроек), живёт в localStorage
