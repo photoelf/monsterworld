@@ -129,7 +129,14 @@ let canvas, ctx;
 
 // ===== Спрайты людей (рисуются кодом) =====
 
-function makePersonSprite(shirt, hair) {
+// Аксессуары гардероба поверх головы 16×16 (все 4 направления)
+const OUTFIT_ACCS = {
+  cap:     { name: '🧢 Кепка' },
+  glasses: { name: '🕶 Очки' },
+  crown:   { name: '👑 Корона' },
+};
+
+function makePersonSprite(shirt, hair, acc) {
   // 4 направления x 2 кадра, каждый 16x16
   const cv = document.createElement('canvas');
   cv.width = 16 * 4; cv.height = 16 * 2;
@@ -167,9 +174,34 @@ function makePersonSprite(shirt, hair) {
         c.fillStyle = '#101018'; c.fillRect(ox + 10, oy + 4, 1, 1);
         c.fillStyle = hair; c.fillRect(ox + 4, oy + 1, 3, 4);
       }
+      // аксессуар — поверх волос и глаз
+      if (acc === 'cap') {
+        c.fillStyle = shirt;
+        c.fillRect(ox + 4, oy + 1, 8, 2);
+        if (dirs[d] === 'down') c.fillRect(ox + 3, oy + 3, 10, 1);
+        else if (dirs[d] === 'left') c.fillRect(ox + 2, oy + 3, 5, 1);
+        else if (dirs[d] === 'right') c.fillRect(ox + 9, oy + 3, 5, 1);
+      } else if (acc === 'glasses' && dirs[d] !== 'up') {
+        c.fillStyle = '#101018';
+        if (dirs[d] === 'down') c.fillRect(ox + 5, oy + 4, 6, 1);
+        else if (dirs[d] === 'left') c.fillRect(ox + 4, oy + 4, 3, 1);
+        else c.fillRect(ox + 9, oy + 4, 3, 1);
+      } else if (acc === 'crown') {
+        c.fillStyle = '#e8c95a';
+        c.fillRect(ox + 4, oy + 1, 8, 1);
+        c.fillRect(ox + 4, oy, 1, 1); c.fillRect(ox + 7, oy, 2, 1); c.fillRect(ox + 11, oy, 1, 1);
+      }
     }
   }
   return cv;
+}
+
+// Наряд игрока: дефолт как у классического героя
+const DEFAULT_OUTFIT = { shirt: '#d84848', hair: '#6b3a1e', acc: null };
+
+function applyOutfit() {
+  const o = (G && G.outfit) || DEFAULT_OUTFIT;
+  playerSprite = makePersonSprite(o.shirt, o.hair, OUTFIT_ACCS[o.acc] ? o.acc : null);
 }
 
 let playerSprite = null, trainerSprite = null, masterSprite = null, traderSprite = null;
@@ -220,7 +252,7 @@ function dumpOwnedMon(m) {
     speciesSeed: m.speciesSeed, stage: m.stage, level: m.level,
     exp: m.exp, hp: m.hp, moves: m.moves, status: m.status || null,
     shiny: !!m.shiny, nick: m.nick || null, charm: m.charm || null,
-    customSprite: m.customSprite || null,
+    customSprite: m.customSprite || null, palette: m.palette || null,
   };
 }
 
@@ -229,7 +261,7 @@ function reviveOwnedMon(md) {
     speciesSeed: md.speciesSeed >>> 0, stage: md.stage, level: md.level,
     exp: md.exp, hp: md.hp, moves: md.moves, status: md.status || null,
     shiny: !!md.shiny, nick: md.nick || null, charm: md.charm || null,
-    customSprite: validCustomSprite(md.customSprite),
+    customSprite: validCustomSprite(md.customSprite), palette: validPalette(md.palette),
   };
   for (const mv of m.moves) {
     if (mv.maxPp === undefined) { mv.maxPp = ppForPower(mv.power); mv.pp = mv.maxPp; }
@@ -272,6 +304,7 @@ function buildSaveData() {
     party: G.party.map(dumpOwnedMon),
     defeated: [...G.defeated],
     picked: [...G.picked],
+    outfit: G.outfit,
   };
 }
 
@@ -336,6 +369,8 @@ function loadGame() {
   G.party = data.party.map(reviveOwnedMon);
   G.defeated = new Set(data.defeated || []);
   G.picked = new Set(data.picked || []);
+  G.outfit = Object.assign({}, DEFAULT_OUTFIT, data.outfit || {});
+  applyOutfit();
   resetFollower();
   return true;
 }
@@ -385,6 +420,8 @@ function newWorld(seedText) {
   G.clock = 0;
   G.defeated = new Set();
   G.picked = new Set();
+  G.outfit = Object.assign({}, DEFAULT_OUTFIT);
+  applyOutfit();
   G.spawn = findSpawn();
   G.player.x = G.spawn.x; G.player.y = G.spawn.y;
   resetFollower();
@@ -478,7 +515,9 @@ async function startTrainerBattle(tr) {
   let team = World.trainerTeam(tr);
   let name = tr.name;
   // «живой» соперник: реальная команда другого игрока (уровни подогнаны под местность)
-  const rival = Math.random() < 0.4 ? netTakeRival() : null;
+  let rival = Math.random() < 0.4 ? netTakeRival() : null;
+  // свой же снапшот с другого устройства (clientId разные, ник один) — пропускаем
+  if (rival && typeof playerNick === 'string' && playerNick && rival.nick === playerNick) rival = null;
   if (rival) {
     const safeNick = String(rival.nick || '').replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 20) || 'Тренер';
     name = 'Тренер Братвы ' + safeNick;
@@ -736,6 +775,7 @@ function tradeMonDump(m) {
     speciesSeed: m.speciesSeed, stage: m.stage, level: m.level, exp: m.exp,
     shiny: !!m.shiny, nick: m.nick || null,
     customSprite: m.customSprite || null,   // едет к другу; в публичный пул не попадает (воркер отбрасывает)
+    palette: m.palette || null,             // окрас заказного братишки
     moves: m.moves.map(mv => ({ name: mv.name, type: mv.type, power: mv.power, acc: mv.acc, maxPp: mv.maxPp })),
   };
 }
@@ -751,6 +791,7 @@ function tradeMonRevive(md) {
   m.shiny = !!md.shiny;
   m.nick = md.nick ? String(md.nick).slice(0, 12) : null;
   m.customSprite = validCustomSprite(md.customSprite);
+  m.palette = validPalette(md.palette);
   m.exp = clamp(md.exp | 0, 0, expToNext(level) - 1);
   if (Array.isArray(md.moves) && md.moves.length) {
     m.moves = md.moves.slice(0, 4).map(mv => {
@@ -1649,6 +1690,21 @@ function renderShop() {
   document.getElementById('shop-money').textContent = 'У тебя: ' + G.money + '₴';
   const rows = document.getElementById('shop-rows');
   rows.innerHTML = '';
+  // витрина генератора заказных братишек (за Stars)
+  {
+    const row = document.createElement('div');
+    row.className = 'srow';
+    const info = document.createElement('div');
+    info.className = 'info';
+    info.innerHTML = '<span class="nm" style="color:var(--ui-accent)">✨ Заказной братишка</span> — ' + MONGEN_PRICE + '⭐' +
+      '<br><span style="opacity:.8">Уникальный братишка: твой тип, окрас и имя. 3 стадии, статы не выше легендарок.</span>';
+    row.appendChild(info);
+    const btn = document.createElement('button');
+    btn.textContent = 'Открыть';
+    btn.onclick = () => openMongen();
+    row.appendChild(btn);
+    rows.appendChild(row);
+  }
   for (const item of SHOP_ITEMS) {
     const isCharm = item.id.startsWith('charm_');
     const charmKind = isCharm ? item.id.slice(6) : null;
@@ -1818,13 +1874,13 @@ function customSpriteImg(dataUrl) {
   return img.complete && img.naturalWidth ? img : null;
 }
 
-// Спрайт монстрика для отрисовки: кастом или процедурный
+// Спрайт монстрика для отрисовки: кастом или процедурный (с учётом палитры заказных)
 function monSprite(m) {
   if (m.customSprite) {
     const img = customSpriteImg(m.customSprite);
     if (img) return img;
   }
-  return speciesSprite(m.speciesSeed, m.stage, m.shiny);
+  return speciesSprite(m.speciesSeed, m.stage, m.shiny, false, m.palette);
 }
 
 // Габариты отрисовки: кастомный PNG приводится к размеру процедурного
@@ -2127,6 +2183,194 @@ function renderSettings() {
       else location.replace(u.href);
     };
   });
+}
+
+// ===== Гардероб игрока (перекраски + аксессуары, платная разблокировка) =====
+
+const OUTFIT_SHIRTS = ['#d84848', '#3a6ab0', '#3a9a50', '#d8a018', '#8a4fd0', '#e87fb0', '#3aa8a0', '#26262e'];
+const OUTFIT_HAIRS  = ['#6b3a1e', '#2a2a38', '#e8c95a', '#b0523a', '#f0f0f0', '#8a4fd0', '#3a6ab0', '#3a9a50'];
+
+let _wrdDraft = null; // черновик наряда, пока панель открыта
+
+function openWardrobe() {
+  if (G.state === 'settings') { document.getElementById('settings-panel').classList.add('hidden'); G.state = 'world'; }
+  if (G.state !== 'world') return;
+  G.state = 'wardrobe';
+  _wrdDraft = Object.assign({}, DEFAULT_OUTFIT, G.outfit || {});
+  renderWardrobe();
+  document.getElementById('wardrobe-panel').classList.remove('hidden');
+  netCheckWardrobe(ok => { if (ok && G.state === 'wardrobe') renderWardrobe(); });
+}
+
+function closeWardrobe() {
+  document.getElementById('wardrobe-panel').classList.add('hidden');
+  G.state = 'world';
+}
+
+function renderWardrobe() {
+  // предпросмотр: кадр «вниз» из спрайт-листа, увеличенный
+  const cv = document.getElementById('wrd-preview');
+  cv.width = 16; cv.height = 16;
+  const c = cv.getContext('2d');
+  c.imageSmoothingEnabled = false;
+  c.drawImage(makePersonSprite(_wrdDraft.shirt, _wrdDraft.hair, _wrdDraft.acc), 0, 0, 16, 16, 0, 0, 16, 16);
+
+  const swatchRow = (elId, colors, key) => {
+    const el = document.getElementById(elId);
+    el.innerHTML = '';
+    for (const col of colors) {
+      const b = document.createElement('button');
+      b.style.cssText = 'width:34px;height:34px;padding:0;border-radius:8px;background:' + col +
+        ';border:3px solid ' + (_wrdDraft[key] === col ? 'var(--ui-accent)' : 'var(--ui-border)') + ';';
+      b.onclick = () => { _wrdDraft[key] = col; renderWardrobe(); };
+      el.appendChild(b);
+    }
+  };
+  swatchRow('wrd-shirts', OUTFIT_SHIRTS, 'shirt');
+  swatchRow('wrd-hairs', OUTFIT_HAIRS, 'hair');
+
+  const accEl = document.getElementById('wrd-accs');
+  accEl.innerHTML = '';
+  const accs = [[null, '— без —']].concat(Object.entries(OUTFIT_ACCS).map(([k, a]) => [k, a.name]));
+  for (const [k, label] of accs) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (_wrdDraft.acc === k) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+    b.onclick = () => { _wrdDraft.acc = k; renderWardrobe(); };
+    accEl.appendChild(b);
+  }
+
+  // применить / купить
+  const buyBox = document.getElementById('wrd-buy');
+  const applyBtn = document.getElementById('wrd-apply');
+  if (wrdUnlocked) {
+    buyBox.classList.add('hidden');
+    applyBtn.disabled = false;
+    applyBtn.onclick = () => {
+      G.outfit = Object.assign({}, _wrdDraft);
+      applyOutfit();
+      saveGame();
+      toast('👕 Новый образ принят!');
+      closeWardrobe();
+    };
+  } else {
+    buyBox.classList.remove('hidden');
+    applyBtn.disabled = true;
+    const btn = document.getElementById('wrd-buy-btn');
+    if (IS_TMA) {
+      btn.textContent = '⭐ Купить за ' + WARDROBE_PRICE + ' Stars';
+      btn.onclick = () => netBuyWardrobe(() => { toast('👕 Гардероб открыт!'); renderWardrobe(); });
+    } else {
+      btn.textContent = 'Покупка — в Telegram: @poketmons_bot';
+      btn.onclick = () => toast('Открой игру в Telegram, чтобы купить.');
+    }
+  }
+}
+
+// ===== Генератор заказных братишек (за Stars) =====
+
+let _mgDraft = null; // {type, palette, seed, name}
+
+function openMongen() {
+  if (G.state === 'shop') closeShop();
+  if (G.state !== 'world') return;
+  G.state = 'mongen';
+  if (!_mgDraft) _mgDraft = { type: 'fire', palette: 'ruby', seed: 0, name: '' };
+  mongenReroll();
+  document.getElementById('mongen-panel').classList.remove('hidden');
+  netMongenStatus(s => { if (G.state === 'mongen') renderMongenBuy(s); });
+}
+
+function closeMongen() {
+  document.getElementById('mongen-panel').classList.add('hidden');
+  G.state = 'world';
+}
+
+// подобрать новый вид под выбранный тип
+function mongenReroll() {
+  _mgDraft.seed = findSpeciesForOrder((Math.random() * 4294967296) >>> 0, _mgDraft.type);
+  renderMongen();
+}
+
+function renderMongen() {
+  const typeEl = document.getElementById('mg-types');
+  typeEl.innerHTML = '';
+  for (const t of TYPE_LIST) {
+    const ti = TYPE_INFO[t];
+    const b = document.createElement('button');
+    b.textContent = ti.ru;
+    b.style.cssText = 'font-size:12px;padding:6px 8px;color:' + ti.color + ';' +
+      (_mgDraft.type === t ? 'border-color:' + ti.color + ';' : '');
+    b.onclick = () => { _mgDraft.type = t; mongenReroll(); };
+    typeEl.appendChild(b);
+  }
+
+  const palEl = document.getElementById('mg-pals');
+  palEl.innerHTML = '';
+  const pals = [[null, '🌿 природный']].concat(Object.entries(MON_PALETTES).map(([k, p]) => [k, p.name]));
+  for (const [k, label] of pals) {
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'font-size:12px;padding:6px 8px;' + (k ? 'color:' + MON_PALETTES[k].color + ';' : '');
+    if (_mgDraft.palette === k) b.style.borderColor = k ? MON_PALETTES[k].color : 'var(--ui-accent)';
+    b.onclick = () => { _mgDraft.palette = k; renderMongen(); };
+    palEl.appendChild(b);
+  }
+
+  // предпросмотр всей цепочки эволюций
+  const prev = document.getElementById('mg-preview');
+  prev.innerHTML = '';
+  const sp = getSpecies(_mgDraft.seed);
+  for (let st = 0; st < sp.chainLen; st++) {
+    const cv = document.createElement('canvas');
+    cv.width = 20; cv.height = 20;
+    const c = cv.getContext('2d');
+    c.imageSmoothingEnabled = false;
+    const spr = speciesSprite(_mgDraft.seed, st, false, false, _mgDraft.palette);
+    c.drawImage(spr, Math.floor((20 - spr.width) / 2), Math.floor((20 - spr.height) / 2));
+    cv.style.cssText = 'width:' + (40 + st * 14) + 'px;image-rendering:pixelated;align-self:flex-end;';
+    prev.appendChild(cv);
+  }
+  const b0 = sp.stages[0].base;
+  document.getElementById('mg-info').innerHTML =
+    '<b>' + sp.stages.map(s => s.name).join(' → ') + '</b><br>' +
+    '<span style="opacity:.8">Сумма базовых статов: ' + (b0.hp + b0.atk + b0.def + b0.spd) +
+    ' · 3 стадии · старт с Ур.5</span>';
+}
+
+function renderMongenBuy(status) {
+  const box = document.getElementById('mg-buy');
+  box.innerHTML = '';
+  const nameInp = document.getElementById('mg-name');
+  const makeBtn = document.createElement('button');
+  if (status.vip || status.credits > 0) {
+    makeBtn.textContent = '✨ Собрать братишку' + (status.vip ? ' (VIP)' : ' (оплачено: ' + status.credits + ')');
+    makeBtn.onclick = () => {
+      makeBtn.disabled = true;
+      netMongenClaim(ok => {
+        if (!ok) { makeBtn.disabled = false; toast('Не вышло списать оплату — попробуй ещё раз.'); return; }
+        const m = makeMonster(_mgDraft.seed, 0, 5);
+        m.nick = nameInp.value.trim().slice(0, 12) || null;
+        m.palette = _mgDraft.palette;
+        if (G.party.length < 6) { G.party.push(m); toast('✨ ' + monName(m) + ' присоединяется к братве!'); }
+        else { G.storage.push(m); toast('✨ ' + monName(m) + ' ждёт в кармане!'); }
+        dexCaught(m);
+        sfx('catch');
+        updateHUD(); saveGame();
+        closeMongen();
+      });
+    };
+  } else if (IS_TMA) {
+    makeBtn.textContent = '⭐ Купить генерацию за ' + MONGEN_PRICE + ' Stars';
+    makeBtn.onclick = () => netBuyMongen(() => {
+      toast('⭐ Оплачено! Собирай братишку.');
+      netMongenStatus(s => renderMongenBuy(s));
+    });
+  } else {
+    makeBtn.textContent = 'Покупка — в Telegram: @poketmons_bot';
+    makeBtn.onclick = () => toast('Открой игру в Telegram, чтобы купить.');
+  }
+  box.appendChild(makeBtn);
 }
 
 // ===== Экспорт сейва =====
@@ -2554,6 +2798,8 @@ function initInput() {
     if (e.code === 'KeyT' && (G.state === 'world' || G.state === 'friend')) { toggleFriendPanel(); return; }
     if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
     if (e.code === 'Comma' && (G.state === 'world' || G.state === 'settings')) { toggleSettings(); return; }
+    if (e.key === 'Escape' && G.state === 'wardrobe') { closeWardrobe(); return; }
+    if (e.key === 'Escape' && G.state === 'mongen') { closeMongen(); return; }
     if (e.key === 'Escape') {
       if (G.state === 'party') { togglePartyPanel(); return; }
       if (G.state === 'mondetail') { closeMonDetail(); return; }
@@ -2608,6 +2854,10 @@ function initTitle() {
   document.getElementById('btn-map-close').onclick = () => toggleMap();
   document.getElementById('btn-ach-close').onclick = () => toggleAchievements();
   document.getElementById('btn-settings-close').onclick = () => toggleSettings();
+  document.getElementById('set-wardrobe').onclick = () => openWardrobe();
+  document.getElementById('btn-wardrobe-close').onclick = () => closeWardrobe();
+  document.getElementById('btn-mongen-close').onclick = () => closeMongen();
+  document.getElementById('mg-reroll').onclick = () => mongenReroll();
   document.getElementById('btn-teach-close').onclick = () => closeTeach();
   document.getElementById('btn-nursery-close').onclick = () => closeNursery();
   document.getElementById('btn-board-close').onclick = () => closeBoard();
@@ -2728,7 +2978,7 @@ function main() {
     window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 250));
   }
   buildTileAtlas();
-  playerSprite = makePersonSprite('#d84848', '#6b3a1e');
+  applyOutfit();
   trainerSprite = makePersonSprite('#3a6ab0', '#2a2a38');
   masterSprite = makePersonSprite('#d8a018', '#f0f0f0');
   traderSprite = makePersonSprite('#3a9a50', '#5a3a1e');

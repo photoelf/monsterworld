@@ -43,7 +43,13 @@ function netFetchRival() {
   _rivalFetching = true;
   fetch(API_BASE + '/team/random?not=' + netClientId())
     .then(r => r.json())
-    .then(d => { if (d && d.snap && Array.isArray(d.snap.team) && d.snap.team.length) _rival = d.snap; })
+    .then(d => {
+      if (!d || !d.snap || !Array.isArray(d.snap.team) || !d.snap.team.length) return;
+      // не деремся сами с собой: clientId у каждого устройства свой,
+      // а сейв общий через облако — фильтруем ещё и по нику
+      if (typeof playerNick === 'string' && playerNick && d.snap.nick === playerNick) return;
+      _rival = d.snap;
+    })
     .catch(() => {})
     .finally(() => { _rivalFetching = false; });
 }
@@ -102,28 +108,24 @@ function netRedeemCode(code, cb) {
     .catch(() => { if (cb) cb(false); });
 }
 
-// Открыть счёт в Stars; onDone зовётся после подтверждённой оплаты
-function netBuySpriteUnlock(onDone) {
+// Открыть счёт в Stars и дождаться оплаты; product: 'spr'|'wrd'|'mon',
+// checkFn(cb) — как проверить, что покупка дошла; onDone — после подтверждения
+function netBuyProduct(product, checkFn, onDone) {
   fetch(API_BASE + '/invoice', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ id: netClientId() }),
+    body: JSON.stringify({ id: netClientId(), product }),
   })
     .then(r => r.json())
     .then(d => {
-      if (d && d.err === 'already unlocked') {
-        sprUnlocked = true;
-        try { localStorage.setItem('mw-spr-unlocked', '1'); } catch (e) {}
-        if (onDone) onDone();
-        return;
-      }
+      if (d && d.err === 'already unlocked') { checkFn(ok => { if (ok && onDone) onDone(); }); return; }
       if (!d || !d.link) { toast('Не удалось создать счёт — попробуй позже.'); return; }
       if (IS_TMA && TG && TG.openInvoice) {
         TG.openInvoice(d.link, status => {
           if (status !== 'paid') return;
           toast('⭐ Спасибо! Подтверждаем оплату...');
           let tries = 0;
-          const poll = () => netCheckUnlock(ok => {
+          const poll = () => checkFn(ok => {
             if (ok) { if (onDone) onDone(); }
             else if (++tries < 12) setTimeout(poll, 1500);
             else toast('Оплата прошла, но подтверждение задерживается — перезайди в игру.');
@@ -135,4 +137,75 @@ function netBuySpriteUnlock(onDone) {
       }
     })
     .catch(() => toast('Сеть недоступна — попробуй позже.'));
+}
+
+function netBuySpriteUnlock(onDone) { netBuyProduct('spr', netCheckUnlock, onDone); }
+
+// ===== Гардероб игрока (перекраски + аксессуары, Telegram Stars) =====
+
+const WARDROBE_PRICE = 15;   // держать в синхроне с воркером (WARDROBE_PRICE_STARS)
+let wrdUnlocked = false;
+try { wrdUnlocked = localStorage.getItem('mw-wrd-unlocked') === '1'; } catch (e) {}
+
+function netCheckWardrobe(cb) {
+  if (wrdUnlocked || !API_BASE) { if (cb) cb(wrdUnlocked); return; }
+  fetch(API_BASE + '/unlock', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: netClientId(),
+      product: 'wrd',
+      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
+    }),
+  })
+    .then(r => r.json())
+    .then(d => {
+      if (d && d.unlocked) {
+        wrdUnlocked = true;
+        try { localStorage.setItem('mw-wrd-unlocked', '1'); } catch (e) {}
+      }
+      if (cb) cb(wrdUnlocked);
+    })
+    .catch(() => { if (cb) cb(wrdUnlocked); });
+}
+
+function netBuyWardrobe(onDone) { netBuyProduct('wrd', netCheckWardrobe, onDone); }
+
+// ===== Генератор заказных братишек (Telegram Stars, кредиты) =====
+
+const MONGEN_PRICE = 25;   // держать в синхроне с воркером (MONGEN_PRICE_STARS)
+
+// cb({credits, vip}) — сколько оплаченных генераций доступно
+function netMongenStatus(cb) {
+  if (!API_BASE) { cb({ credits: 0, vip: false }); return; }
+  fetch(API_BASE + '/mongen', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: netClientId(),
+      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
+    }),
+  })
+    .then(r => r.json())
+    .then(d => cb({ credits: (d && d.credits) | 0, vip: !!(d && d.vip) }))
+    .catch(() => cb({ credits: 0, vip: false }));
+}
+
+// Списать один кредит; cb(true) при успехе
+function netMongenClaim(cb) {
+  fetch(API_BASE + '/mongen/claim', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      id: netClientId(),
+      initData: (typeof TG !== 'undefined' && TG && TG.initData) || null,
+    }),
+  })
+    .then(r => r.json())
+    .then(d => cb(!!(d && d.ok)))
+    .catch(() => cb(false));
+}
+
+function netBuyMongen(onDone) {
+  netBuyProduct('mon', cb => netMongenStatus(s => cb(s.credits > 0 || s.vip)), onDone);
 }

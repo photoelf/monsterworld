@@ -13,6 +13,24 @@
 // статы из вида — «нарисовать» имбу нельзя). Ник — только буквы/цифры/._- .
 
 const SPRITE_PRICE_STARS = 10;   // цена разблокировки кастомных спрайтов, XTR
+const WARDROBE_PRICE_STARS = 15; // цена гардероба игрока, XTR
+const MONGEN_PRICE_STARS = 25;   // цена одной генерации заказного братишки, XTR
+
+// Товары: once — одноразовая разблокировка (KV-флаг), иначе счётчик кредитов
+const PRODUCTS = {
+  spr: { once: true,  price: SPRITE_PRICE_STARS,   key: id => 'unlock:' + id,
+         title: 'Свои спрайты братвы',
+         desc: 'Загружай собственные PNG-облики для своих братишек. Навсегда.',
+         thanks: '⭐ Спасибо за поддержку Карманной Братвы! Загрузка своих спрайтов открыта — вернись в игру и обнови её.' },
+  wrd: { once: true,  price: WARDROBE_PRICE_STARS, key: id => 'wrd:' + id,
+         title: 'Гардероб игрока',
+         desc: 'Перекраски футболки и волос + аксессуары: кепка, очки, корона. Навсегда.',
+         thanks: '⭐ Спасибо! Гардероб открыт — вернись в игру и приоденься.' },
+  mon: { once: false, price: MONGEN_PRICE_STARS,   key: id => 'mon:' + id,
+         title: 'Заказной братишка',
+         desc: 'Уникальный братишка: твой тип, окрас и имя. Одна генерация.',
+         thanks: '⭐ Спасибо! Генерация оплачена — вернись в игру и собери своего братишку.' },
+};
 
 const INDEX_KEY = 'idx';
 const INDEX_CAP = 1500;         // сколько команд держим в ротации
@@ -31,6 +49,7 @@ const json = (data, status = 200) =>
   });
 
 const TYPES = ['normal', 'fire', 'water', 'grass', 'electric', 'ice', 'psychic', 'shadow'];
+const PALETTES = ['ruby', 'ocean', 'forest', 'gold', 'violet', 'ice', 'shadow', 'rose'];
 
 function sanitizeNick(nick) {
   const s = String(nick || '').replace(/[^\p{L}\p{N} ._-]/gu, '').trim().slice(0, 20);
@@ -47,6 +66,7 @@ function validMon(m) {
     exp: Math.max(0, m.exp | 0),
     shiny: !!m.shiny,
     nick: m.nick ? String(m.nick).replace(/[^\p{L}\p{N} ._-]/gu, '').slice(0, 12) || null : null,
+    palette: PALETTES.includes(m.palette) ? m.palette : null,
     moves: [],
   };
   if (!Array.isArray(m.moves) || !m.moves.length) return null;
@@ -158,23 +178,25 @@ export default {
       return json({ snap: null });
     }
 
-    // --- счёт на разблокировку кастомных спрайтов (Telegram Stars) ---
+    // --- счёт на покупку (Telegram Stars); product: spr|wrd|mon ---
     if (url.pathname === '/invoice' && req.method === 'POST') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.id);
       if (id.length < 8) return json({ err: 'bad id' }, 400);
-      if (await env.SNAPS.get('unlock:' + id)) return json({ err: 'already unlocked' }, 409);
+      const prod = PRODUCTS[body.product] ? body.product : 'spr';
+      const p = PRODUCTS[prod];
+      if (p.once && await env.SNAPS.get(p.key(id))) return json({ err: 'already unlocked' }, 409);
       const r = await tgApi(env, 'createInvoiceLink', {
-        title: 'Свои спрайты братвы',
-        description: 'Загружай собственные PNG-облики для своих братишек. Навсегда.',
-        payload: 'spr:' + id,
+        title: p.title,
+        description: p.desc,
+        payload: prod + ':' + id,
         currency: 'XTR',
-        prices: [{ label: 'Разблокировка', amount: SPRITE_PRICE_STARS }],
+        prices: [{ label: p.once ? 'Разблокировка' : 'Генерация', amount: p.price }],
       });
       if (!r.ok) return json({ err: 'tg error' }, 502);
-      return json({ link: r.result, price: SPRITE_PRICE_STARS });
+      return json({ link: r.result, price: p.price });
     }
 
     // --- статус покупки (GET — совместимость со старыми клиентами) ---
@@ -184,22 +206,56 @@ export default {
       return json({ unlocked: !!(await env.SNAPS.get('unlock:' + id)) });
     }
 
-    // --- статус покупки + VIP по подписанному Telegram-id ---
+    // --- статус покупки + VIP по подписанному Telegram-id; product: spr|wrd ---
     if (url.pathname === '/unlock' && req.method === 'POST') {
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.id);
       if (id.length < 8) return json({ unlocked: false });
-      if (await env.SNAPS.get('unlock:' + id)) return json({ unlocked: true });
+      const prod = (body.product === 'wrd') ? 'wrd' : 'spr';
+      const key = PRODUCTS[prod].key(id);
+      if (await env.SNAPS.get(key)) return json({ unlocked: true });
       // initData подписан Telegram — подделать чужой tg-id нельзя
       if (body.initData) {
         const user = await verifyInitData(env, body.initData);
         if (user && user.id && await env.SNAPS.get('vip:' + user.id)) {
-          await env.SNAPS.put('unlock:' + id, 'vip');
+          await env.SNAPS.put(key, 'vip');
           return json({ unlocked: true, vip: true });
         }
       }
       return json({ unlocked: false });
+    }
+
+    // --- генератор: сколько оплаченных генераций; VIP — без ограничений ---
+    if (url.pathname === '/mongen' && req.method === 'POST') {
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.id);
+      if (id.length < 8) return json({ credits: 0 });
+      const credits = parseInt(await env.SNAPS.get('mon:' + id), 10) || 0;
+      let vip = false;
+      if (body.initData) {
+        const user = await verifyInitData(env, body.initData);
+        vip = !!(user && user.id && await env.SNAPS.get('vip:' + user.id));
+      }
+      return json({ credits, vip });
+    }
+
+    // --- генератор: списать один кредит ---
+    if (url.pathname === '/mongen/claim' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const id = cleanId(body.id);
+      if (id.length < 8) return json({ ok: false });
+      if (body.initData) {
+        const user = await verifyInitData(env, body.initData);
+        if (user && user.id && await env.SNAPS.get('vip:' + user.id)) return json({ ok: true, vip: true });
+      }
+      const credits = parseInt(await env.SNAPS.get('mon:' + id), 10) || 0;
+      if (credits < 1) return json({ ok: false });
+      await env.SNAPS.put('mon:' + id, String(credits - 1));
+      return json({ ok: true, left: credits - 1 });
     }
 
     // --- промокод ---
@@ -240,14 +296,21 @@ export default {
       const msg = upd.message;
       if (msg && msg.successful_payment) {
         const payload = String(msg.successful_payment.invoice_payload || '');
-        if (payload.startsWith('spr:')) {
-          const id = cleanId(payload.slice(4));
-          if (id.length >= 8) await env.SNAPS.put('unlock:' + id, '1');
+        const m = payload.match(/^(spr|wrd|mon):(.+)$/);
+        let thanks = '⭐ Спасибо за поддержку Карманной Братвы!';
+        if (m) {
+          const p = PRODUCTS[m[1]];
+          const id = cleanId(m[2]);
+          if (id.length >= 8) {
+            if (p.once) await env.SNAPS.put(p.key(id), '1');
+            else {
+              const cur = parseInt(await env.SNAPS.get(p.key(id)), 10) || 0;
+              await env.SNAPS.put(p.key(id), String(cur + 1));
+            }
+          }
+          thanks = p.thanks;
         }
-        await tgApi(env, 'sendMessage', {
-          chat_id: msg.chat.id,
-          text: '⭐ Спасибо за поддержку Карманной Братвы! Загрузка своих спрайтов открыта — вернись в игру и обнови её.',
-        });
+        await tgApi(env, 'sendMessage', { chat_id: msg.chat.id, text: thanks });
         return new Response('ok');
       }
 

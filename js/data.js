@@ -217,6 +217,39 @@ function findSpeciesOfType(baseSeed, types) {
   return baseSeed >>> 0;
 }
 
+// ===== Заказные братишки (Генератор за Stars) =====
+
+// Палитры перекраски корпуса; id едет в сейв/обмены как m.palette
+const MON_PALETTES = {
+  ruby:   { name: 'Рубин',  color: '#c23b3b', dark: '#6e1f1f', light: '#ff9d9d' },
+  ocean:  { name: 'Океан',  color: '#2f6fd0', dark: '#173a75', light: '#8fc4ff' },
+  forest: { name: 'Чаща',   color: '#3a9a50', dark: '#1d5429', light: '#9fe3a8' },
+  gold:   { name: 'Злато',  color: '#e8c95a', dark: '#8f7222', light: '#fff0b0' },
+  violet: { name: 'Фиолет', color: '#8a4fd0', dark: '#4a2775', light: '#d3aaff' },
+  ice:    { name: 'Лёд',    color: '#7fd4e8', dark: '#3a7a90', light: '#e0fbff' },
+  shadow: { name: 'Мгла',   color: '#5a5a72', dark: '#26262e', light: '#b8b8d0' },
+  rose:   { name: 'Роза',   color: '#e87fb0', dark: '#8f3a66', light: '#ffd0e8' },
+};
+
+function validPalette(p) { return typeof p === 'string' && MON_PALETTES[p] ? p : null; }
+
+// Вид для заказа: нужный тип, полная цепочка из 3 стадий, статы сильные,
+// но не выше легендарок (сумма базы ≤ 350 при потолке генерации 380)
+function findSpeciesForOrder(baseSeed, type) {
+  let s = baseSeed >>> 0, fallback = null;
+  for (let i = 0; i < 2000; i++) {
+    const sp = getSpecies(s);
+    if (sp.stages[0].type === type && sp.chainLen === 3) {
+      const b = sp.stages[0].base;
+      const total = b.hp + b.atk + b.def + b.spd;
+      if (total >= 300 && total <= 350) return s;
+      if (fallback === null) fallback = s;
+    }
+    s = (s + 0x9E3779B9) >>> 0;
+  }
+  return fallback !== null ? fallback : findSpeciesOfType(baseSeed, [type]);
+}
+
 // Ищет вид с полной цепочкой из 3 стадий (для гнёзд)
 function findSpeciesChain3(baseSeed) {
   let s = baseSeed >>> 0;
@@ -315,9 +348,11 @@ function grantExp(m, amount) {
 const _spriteCache = new Map();
 
 // Генерирует симметричного пиксельного монстрика на canvas
-// shiny = редкая золотая вариация; back = вид со спины (без глаз)
-function speciesSprite(speciesSeed, stage, shiny, back) {
-  const key = speciesSeed + ':' + stage + (shiny ? ':s' : '') + (back ? ':b' : '');
+// shiny = редкая золотая вариация; back = вид со спины (без глаз);
+// palId = перекраска корпуса из MON_PALETTES (заказные братишки)
+function speciesSprite(speciesSeed, stage, shiny, back, palId) {
+  const pal = !shiny && validPalette(palId); // сияние ценнее перекраски
+  const key = speciesSeed + ':' + stage + (shiny ? ':s' : '') + (back ? ':b' : '') + (pal ? ':' + pal : '');
   if (_spriteCache.has(key)) return _spriteCache.get(key);
 
   const st = getSpecies(speciesSeed).stages[stage];
@@ -368,6 +403,9 @@ function speciesSprite(speciesSeed, stage, shiny, back) {
   if (shiny) {
     info = { color: '#e8c95a', dark: '#8f7222', light: '#fff0b0' };
     accent = '#ffffff';
+  } else if (pal) {
+    info = MON_PALETTES[pal];
+    accent = MON_PALETTES[pal].light;
   }
   const cv = document.createElement('canvas');
   cv.width = size; cv.height = size;

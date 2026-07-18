@@ -90,7 +90,7 @@ const Battle = {
     const cv = this.el(canvasId);
     // кастомный PNG: рисуем в размере процедурного спрайта той же стадии
     const custom = mon.customSprite && typeof customSpriteImg === 'function' ? customSpriteImg(mon.customSprite) : null;
-    const sp = custom || speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back);
+    const sp = custom || speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back, mon.palette);
     const d = typeof monSpriteDims === 'function' ? monSpriteDims(mon, sp) : { w: sp.width, h: sp.height };
     cv.width = 32; cv.height = 32;
     const ctx = cv.getContext('2d');
@@ -346,7 +346,7 @@ const Battle = {
           : { label: 'Поймать', small: 'нельзя: чужой', disabled: true },
         { label: 'Предметы' },
         { label: 'Братва' },
-        { label: 'Бежать', disabled: opts.kind === 'trainer' },
+        { label: 'Бежать' },
       ];
       const act = await this.menu(actions);
 
@@ -469,7 +469,9 @@ const Battle = {
       } else if (act === 4) {
         const chance = 0.6 + clamp((effSpd(pm) - effSpd(em)) / 100, -0.25, 0.35);
         if (Math.random() < chance) {
-          await this.say('Ты успешно сбегаешь!');
+          await this.say(opts.kind === 'trainer'
+            ? 'Ты сбегаешь! ' + (opts.trainerName || 'Соперник') + ' кричит вслед что-то обидное.'
+            : 'Ты успешно сбегаешь!');
           result = 'run';
           break battleLoop;
         }
