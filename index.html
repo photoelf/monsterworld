@@ -89,8 +89,10 @@
     gap: 14px; text-align: center;
   }
   .hidden { display: none !important; }
-  /* длинные списки гардероба/магазина — на десктопе внутренний скролл, чтобы панель влезала в экран */
-  #shop-cats { max-height: 280px; overflow-y: auto; }
+  /* магазин стиля: превью и «Купить» всегда сверху, крутится только список вещей
+     (высота = экран минус шапка панели ~380px и сейф-зоны TMA) */
+  #shop-cats { overflow-y: auto; max-height: clamp(140px, calc(100vh - 420px - var(--safe-top, 0px) - var(--safe-bottom, 0px)), 420px); }
+  /* гардероб: длинный список купленного — внутренний скролл на десктопе */
   #wrd-owned { max-height: 220px; overflow-y: auto; }
   h1 { color: var(--ui-accent); font-size: 34px; letter-spacing: 2px; text-shadow: 3px 3px 0 #000; }
   .overlay p { max-width: 560px; line-height: 1.5; font-size: 14px; opacity: .9; }
@@ -326,9 +328,11 @@
   body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
   body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
   body.mobile #friend-main, body.mobile #dex-grid, body.mobile #trade-rows,
-  body.mobile #shop-cats, body.mobile #wrd-owned {
+  body.mobile #wrd-owned {
     max-height: none !important; flex-shrink: 0;
   }
+  /* магазин стиля и на мобиле не скроллится страницей — крутится только #shop-cats */
+  body.mobile #accshop-panel { overflow-y: hidden; }
   body.mobile h1 { font-size: 20px; }
   body.mobile button { min-height: 44px; font-size: 15px; }
   /* кнопка «Закрыть» наверху длинных списков — липнет к верху при прокрутке */

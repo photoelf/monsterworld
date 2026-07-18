@@ -255,10 +255,6 @@ const OUTFIT_ACCS = {
     else if (d === 'left') { r(G, 7, 4, 5, 1); r(V, 4, 4, 3, 1); }
     else { r(G, 4, 4, 5, 1); r(V, 9, 4, 3, 1); }
   } },
-  starpin: { name: '⭐ Звезда неуязвимости', draw(r, d) {
-    const Y = '#f8d838', x = d === 'right' ? 6 : 9;
-    r(Y, x, 0); r(Y, x - 1, 1); r(Y, x, 1); r(Y, x + 1, 1); r(Y, x, 2);
-  } },
   // ----- Костюмы (слот costume): тело x4..11 y7..11 + руки x3/x12 y8..10 -----
   kimono: { name: '🥋 Кимоно бойца', draw(r, d) {
     const W = '#f0f0f5';
@@ -301,24 +297,10 @@ const OUTFIT_ACCS = {
     const P = '#f06890';
     r(P, 6, 8); r(P, 8, 8); r(P, 6, 9, 3, 1); r(P, 7, 10);
   } },
-  printstar: { name: '⭐ Принт «звезда»', draw(r, d) {
-    if (d !== 'down') return;
-    const Y = '#f8d838';
-    r(Y, 7, 8); r(Y, 6, 9, 3, 1); r(Y, 7, 10);
-  } },
-  printskull: { name: '💀 Принт «череп»', draw(r, d, shirt) {
-    if (d !== 'down') return;
-    r('#f0f0f0', 6, 8, 3, 3); r(shirt, 6, 9); r(shirt, 8, 9);
-  } },
   printinvader: { name: '👾 Принт «пришелец»', draw(r, d) {
     if (d !== 'down') return;
     const G = '#40d840';
     r(G, 7, 8); r(G, 9, 8); r(G, 6, 9, 5, 1); r(G, 6, 10); r(G, 8, 10); r(G, 10, 10);
-  } },
-  printgg: { name: '🎮 Принт «GG»', draw(r, d) {
-    if (d !== 'down') return;
-    const W = '#f0f0f0';
-    for (const x of [5, 9]) { r(W, x, 7, 3, 1); r(W, x, 8); r(W, x, 9); r(W, x + 2, 9); r(W, x, 10, 3, 1); }
   } },
 };
 
@@ -326,7 +308,7 @@ const OUTFIT_ACCS = {
 const ACC_SLOTS = {
   glasses: 'glasses', anaglyph: 'glasses', redvisor: 'glasses',
   kimono: 'costume', tracksuit: 'costume', labcoat: 'costume', vault: 'costume', tux: 'costume', armor: 'costume',
-  printheart: 'print', printstar: 'print', printskull: 'print', printinvader: 'print', printgg: 'print',
+  printheart: 'print', printinvader: 'print',
 };
 const accSlot = k => ACC_SLOTS[k] || 'head';
 const SLOT_FIELD = { head: 'acc', glasses: 'glasses', costume: 'costume', print: 'print' }; // acc — легаси-имя слота шапок в сейве

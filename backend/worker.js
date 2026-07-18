@@ -80,10 +80,10 @@ const ACC_PRICES = {
   glasses: 2, anaglyph: 2, merc: 2, invader: 2,
   plumber: 3, elfcap: 3, hedgehog: 3, champcap: 3, redvisor: 3, frogcap: 3,
   ghostpal: 4, shroom: 4, robohelm: 4,
-  crown: 5, spartan: 5, starpin: 5,
+  crown: 5, spartan: 5,
   // костюмы и принты на футболку
   kimono: 2, tracksuit: 3, labcoat: 4, vault: 4, tux: 5, armor: 5,
-  printheart: 1, printstar: 1, printskull: 2, printinvader: 2, printgg: 2,
+  printheart: 1, printinvader: 2,
 };
 const ACC_NAMES = {
   cap: 'Кепка', fightband: 'Повязка бойца', pirate: 'Бандана пирата',
@@ -92,11 +92,10 @@ const ACC_NAMES = {
   champcap: 'Кепка юного чемпиона', redvisor: 'Красный визор', frogcap: 'Лягушачий капюшон',
   ghostpal: 'Призрачный кореш', shroom: 'Грибная шапка',
   robohelm: 'Шлем робобойца', crown: 'Корона',
-  spartan: 'Шлем спартанца', starpin: 'Звезда неуязвимости',
+  spartan: 'Шлем спартанца',
   kimono: 'Кимоно бойца', tracksuit: 'Спортивка братана', labcoat: 'Халат профессора',
   vault: 'Комбез убежища', tux: 'Смокинг агента', armor: 'Силовая броня',
-  printheart: 'Принт «сердце»', printstar: 'Принт «звезда»', printskull: 'Принт «череп»',
-  printinvader: 'Принт «пришелец»', printgg: 'Принт «GG»',
+  printheart: 'Принт «сердце»', printinvader: 'Принт «пришелец»',
 };
 
 function sanitizeNick(nick) {
