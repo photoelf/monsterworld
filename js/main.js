@@ -2608,6 +2608,11 @@ function toggleDex() {
   }
   if (G.state !== 'world') return;
   G.state = 'dex';
+  renderDexGrid();
+  panel.classList.remove('hidden');
+}
+
+function renderDexGrid() {
   document.getElementById('dex-count').textContent =
     'Поймано видов: ' + G.dex.caught.size + ' · Замечено: ' + G.dex.seen.size;
   const grid = document.getElementById('dex-grid');
@@ -2632,6 +2637,9 @@ function toggleDex() {
       info.innerHTML = '<div class="nm">' + (isShiny ? '✨' : '') + sp.stages[0].name + '</div>' +
         '<div style="color:' + t.color + '">' + t.ru + '</div>' +
         '<div style="opacity:.7">' + sp.stages.map(s => s.name).join(' → ') + '</div>';
+      // тап по пойманному виду — открыть карточку с описанием
+      card.style.cursor = 'pointer';
+      card.onclick = () => openDexCard(seed);
     } else {
       info.innerHTML = '<div class="nm">' + sp.stages[0].name + '</div>' +
         '<div style="opacity:.6">???</div>';
@@ -2640,7 +2648,80 @@ function toggleDex() {
     grid.appendChild(card);
   }
   if (!seeds.length) grid.innerHTML = '<p style="opacity:.7">Пока пусто — иди в высокую траву!</p>';
-  panel.classList.remove('hidden');
+}
+
+// Карточка вида (в стиле Animal Crossing): крупный спрайт, цепочка эволюций,
+// статы и процедурное описание. Открывается тапом из грида Братопедии.
+function openDexCard(seed) {
+  const sp = getSpecies(seed);
+  const st0 = sp.stages[0];
+  const t = TYPE_INFO[st0.type];
+  const isShiny = G.dex.shiny.has(seed);
+  document.getElementById('dex-count').textContent = '';
+  const dexGrid = document.getElementById('dex-grid');
+  dexGrid.innerHTML = '';
+  // dex-grid — flex-row wrap (сетка карточек); для детальной карточки кладём
+  // всё в один колоночный контейнер, иначе элементы разъедутся по ряду
+  const grid = document.createElement('div');
+  grid.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:12px;width:100%;';
+  dexGrid.appendChild(grid);
+
+  const back = document.createElement('button');
+  back.textContent = '‹ Назад к видам';
+  back.onclick = () => { document.getElementById('dex-count').textContent = ''; renderDexGrid(); };
+  grid.appendChild(back);
+
+  // крупный спрайт
+  const big = document.createElement('canvas');
+  big.width = 48; big.height = 48;
+  big.style.cssText = 'width:120px;height:120px;image-rendering:pixelated;';
+  const bc = big.getContext('2d');
+  bc.imageSmoothingEnabled = false;
+  const spr = speciesSprite(seed, sp.chainLen - 1, isShiny);
+  bc.drawImage(spr, Math.floor((48 - spr.width) / 2), Math.floor((48 - spr.height) / 2), spr.width, spr.height);
+  grid.appendChild(big);
+
+  const title = document.createElement('div');
+  title.style.cssText = 'font-size:18px;font-weight:bold;';
+  title.innerHTML = (isShiny ? '✨ ' : '') + st0.name +
+    ' <span style="color:' + t.color + ';font-size:14px">' + t.ru + '</span>';
+  grid.appendChild(title);
+
+  // цепочка эволюций со спрайтами
+  const chain = document.createElement('div');
+  chain.style.cssText = 'display:flex;gap:10px;align-items:flex-end;justify-content:center;flex-wrap:wrap;';
+  sp.stages.forEach((s, i) => {
+    const wrap = document.createElement('div');
+    wrap.style.cssText = 'display:flex;flex-direction:column;align-items:center;gap:2px;';
+    const cv = document.createElement('canvas');
+    cv.width = 30; cv.height = 30;
+    cv.style.cssText = 'width:' + (44 + i * 8) + 'px;image-rendering:pixelated;';
+    const c = cv.getContext('2d');
+    c.imageSmoothingEnabled = false;
+    const s2 = speciesSprite(seed, i, isShiny);
+    c.drawImage(s2, Math.floor((30 - s2.width) / 2), Math.floor((30 - s2.height) / 2));
+    wrap.appendChild(cv);
+    const nm = document.createElement('div');
+    nm.style.cssText = 'font-size:11px;opacity:.85;';
+    nm.textContent = s.name;
+    wrap.appendChild(nm);
+    chain.appendChild(wrap);
+  });
+  grid.appendChild(chain);
+
+  // базовые статы вида
+  const b = st0.base;
+  const stats = document.createElement('div');
+  stats.style.cssText = 'font-size:12px;opacity:.85;';
+  stats.textContent = 'Задатки: ОЗ ' + b.hp + ' · АТК ' + b.atk + ' · ЗАЩ ' + b.def + ' · СКР ' + b.spd;
+  grid.appendChild(stats);
+
+  // процедурное описание
+  const flav = document.createElement('div');
+  flav.style.cssText = 'font-size:13px;line-height:1.5;max-width:min(440px,92vw);background:var(--ui-panel);' +
+    'border:2px solid var(--ui-border);border-radius:6px;padding:10px 12px;';
+  flav.textContent = speciesFlavor(seed);
+  grid.appendChild(flav);
 }
 
 // ===== Панель команды =====
