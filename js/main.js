@@ -2809,8 +2809,18 @@ function renderSettings() {
     renderSettings();
   };
   const musBtn = document.getElementById('set-music');
-  musBtn.textContent = MUSIC_ON ? '🌧 Эмбиент: вкл' : '🌧 Эмбиент: выкл';
+  musBtn.textContent = MUSIC_ON ? '🎵 Музыка и эмбиент: вкл' : '🎵 Музыка и эмбиент: выкл';
   musBtn.onclick = () => { setMusicOn(!MUSIC_ON); renderSettings(); };
+  // громкость музыки (0–100%, только mp3-треки; эмбиент и sfx не трогает)
+  const volRow = document.getElementById('set-musicvol-row');
+  volRow.style.display = MUSIC_ON ? '' : 'none';
+  const vol = document.getElementById('set-musicvol');
+  vol.value = MUSIC_VOL;
+  document.getElementById('set-musicvol-val').textContent = MUSIC_VOL + '%';
+  vol.oninput = () => {
+    setMusicVol(+vol.value);
+    document.getElementById('set-musicvol-val').textContent = MUSIC_VOL + '%';
+  };
   // раскладка джойстика — только на тач-устройствах
   const joyBtn = document.getElementById('set-joyside');
   if (IS_MOBILE) {
