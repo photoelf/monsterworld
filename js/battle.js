@@ -420,6 +420,11 @@ const Battle = {
   // Возвращает: 'win' | 'lose' | 'run' | 'caught'
 
   async run(opts) {
+    // Страховка: с полностью павшей братвой бой не начинаем. Иначе firstAlive
+    // вернёт -1, party[-1] уронит refresh() и промис отвалится с TypeError —
+    // экран боя зависал видимым, afterBattle не вызывался (наступали).
+    // Возвращаем 'lose', чтобы вызывающий штатно отправил игрока к фонтану.
+    if (this.firstAlive(G.party) === -1) return 'lose';
     this.active = true;
     this.el('battle').classList.remove('hidden');
     this.setupScene(opts.foe || (opts.kind === 'trainer' ? 'trainer' : 'wild'));
@@ -672,7 +677,12 @@ const Battle = {
           dexSee(enemyParty[ei]);
           await this.say(opts.trainerName + ' отправляет в бой ' + monName(enemyParty[ei]) + '!');
         } else {
-          result = 'win';
+          // Взаимный нокаут: враг пал, но и вся братва легла — отдача «Отчаянного
+          // удара» или яд/ожог в конце хода. Проверка врага идёт первой, поэтому
+          // без этой ветки бой возвращал 'win' с мёртвой командой: afterBattle не
+          // лечил и не телепортировал, автокач бежал дальше, а следующий бой падал
+          // с TypeError (firstAlive = -1). Отключка сильнее победы.
+          result = this.firstAlive(party) === -1 ? 'lose' : 'win';
           break battleLoop;
         }
       }

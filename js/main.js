@@ -2089,14 +2089,7 @@ function render() {
       ctx.fillRect(cx - rippleW / 2, groundY + 3, rippleW, 2);
       const mx = cx - Math.floor(sw / 2);
       const my = groundY - sh + 7 + wave;
-      // водный братишка смотрит по ходу: влево-спрайт флипаем при движении вправо
-      if (p.dir === 'right' && !(mount.mon.customSprite)) {
-        ctx.drawImage(spr, mx, my, sw, sh);
-      } else if (p.dir === 'right') {
-        ctx.save(); ctx.scale(-1, 1); ctx.drawImage(spr, -mx - sw, my, sw, sh); ctx.restore();
-      } else {
-        ctx.drawImage(spr, mx, my, sw, sh);
-      }
+      drawMountSprite(ctx, spr, mx, my, sw, sh, p.dir === 'right');
     } else if (mount.kind === 'brother') {
       const wave = p.moving ? Math.round(Math.abs(Math.sin(G.clock * 9)) * 2) : 0;
       const spr = monSprite(mount.mon);
@@ -2104,7 +2097,7 @@ function render() {
       const sw = dims.w, sh = dims.h;
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
       ctx.fillRect(cx - 5, groundY + 2, 10, 2);
-      ctx.drawImage(spr, cx - Math.floor(sw / 2), groundY - sh + 6 - wave, sw, sh);
+      drawMountSprite(ctx, spr, cx - Math.floor(sw / 2), groundY - sh + 6 - wave, sw, sh, p.dir === 'right');
     } else if (mount.kind === 'scooter') {
       const spr = scooterSprite();
       ctx.fillStyle = 'rgba(0,0,0,0.25)';
@@ -2459,6 +2452,21 @@ function monSprite(m) {
     if (img) return img;
   }
   return speciesSprite(m.speciesSeed, m.stage, m.shiny, false, m.palette, m.mega);
+}
+
+// Отрисовка маунта с разворотом по ходу движения.
+// Кастомный PNG нарисован смотрящим ВЛЕВО — при беге вправо зеркалим его.
+// Процедурные спрайты симметричны (speciesSprite строит их зеркальными
+// половинами), поэтому флип для них не нужен и проверяется именно Image.
+function drawMountSprite(ctx, spr, x, y, w, h, faceRight) {
+  if (faceRight && spr instanceof Image) {
+    ctx.save();
+    ctx.scale(-1, 1);
+    ctx.drawImage(spr, -x - w, y, w, h);
+    ctx.restore();
+  } else {
+    ctx.drawImage(spr, x, y, w, h);
+  }
 }
 
 // Габариты отрисовки: кастомный PNG приводится к размеру процедурного
