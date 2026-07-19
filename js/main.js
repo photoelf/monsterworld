@@ -2292,8 +2292,10 @@ function renderShop() {
       renderShop();
       updateHUD();
     };
-    row.appendChild(btn);
-    // продажа за полцены; свитки не продаются (они индивидуальны — им своя панель)
+    // ПОРЯДОК ВАЖЕН: «продать» добавляется ПЕРЕД «купить», т.к. .info { flex:1 }
+    // прижимает кнопки вправо. «Купить» обязана всегда оставаться крайней справа:
+    // иначе после первой покупки появившаяся «продать» встаёт ровно под палец, и
+    // серия быстрых покупок превращается в купить-продать-купить (наступали).
     const sellPrice = Math.max(1, Math.floor(item.price / 2));
     if (item.id !== 'scroll' && have > 0) {
       const sell = document.createElement('button');
@@ -2313,6 +2315,7 @@ function renderShop() {
       };
       row.appendChild(sell);
     }
+    row.appendChild(btn);
     rows.appendChild(row);
   }
 }
