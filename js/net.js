@@ -141,10 +141,18 @@ const SCUM_PRICE = 10;     // режим сейвскамера (SCUM_PRICE_STAR
 let scumUnlocked = false;
 try { scumUnlocked = localStorage.getItem('mw-scum-unlocked') === '1'; } catch (e) {}
 
+const AUTO_PRICE = 50;     // автобой (AUTO_PRICE_STARS)
+let autoUnlocked = false;
+try { autoUnlocked = localStorage.getItem('mw-auto-unlocked') === '1'; } catch (e) {}
+
+const GRIND_PRICE = 100;   // автокач, бандл поверх автобоя (GRIND_PRICE_STARS)
+let grindUnlocked = false;
+try { grindUnlocked = localStorage.getItem('mw-grind-unlocked') === '1'; } catch (e) {}
+
 // Объединённая проверка разовых покупок за ОДИН запрос (spr/scoot/scum) —
 // раньше было по запросу на каждый товар, теперь один /status. Экономит KV.
 function netCheckStatus(cb) {
-  if ((sprUnlocked && scootUnlocked && scumUnlocked) || !API_BASE) { if (cb) cb(); return; }
+  if ((sprUnlocked && scootUnlocked && scumUnlocked && autoUnlocked && grindUnlocked) || !API_BASE) { if (cb) cb(); return; }
   fetch(API_BASE + '/status', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -156,6 +164,8 @@ function netCheckStatus(cb) {
         if (d.spr) { sprUnlocked = true; try { localStorage.setItem('mw-spr-unlocked2', '1'); } catch (e) {} }
         if (d.scoot) { scootUnlocked = true; try { localStorage.setItem('mw-scoot-unlocked2', '1'); } catch (e) {} }
         if (d.scum) { scumUnlocked = true; try { localStorage.setItem('mw-scum-unlocked', '1'); } catch (e) {} }
+        if (d.auto) { autoUnlocked = true; try { localStorage.setItem('mw-auto-unlocked', '1'); } catch (e) {} }
+        if (d.grind) { grindUnlocked = true; try { localStorage.setItem('mw-grind-unlocked', '1'); } catch (e) {} }
       }
       if (cb) cb();
     })
@@ -167,6 +177,18 @@ function netCheckScum(cb) {
   netCheckStatus(() => { if (cb) cb(scumUnlocked); });
 }
 function netBuyScum(onDone) { netBuyProduct('scum', netCheckScum, onDone); }
+
+function netCheckAuto(cb) {
+  if (autoUnlocked || !API_BASE) { if (cb) cb(autoUnlocked); return; }
+  netCheckStatus(() => { if (cb) cb(autoUnlocked); });
+}
+function netBuyAuto(onDone) { netBuyProduct('auto', netCheckAuto, onDone); }
+
+function netCheckGrind(cb) {
+  if (grindUnlocked || !API_BASE) { if (cb) cb(grindUnlocked); return; }
+  netCheckStatus(() => { if (cb) cb(grindUnlocked); });
+}
+function netBuyGrind(onDone) { netBuyProduct('grind', netCheckGrind, onDone); }
 
 function netCheckUnlock(cb) {
   if (sprUnlocked || !API_BASE) { if (cb) cb(sprUnlocked); return; }

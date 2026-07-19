@@ -13,6 +13,11 @@ const Battle = {
   _menuResolve: null,
   _battleSave: null,   // снапшот боя (сейвскам внутри боя)
 
+  // Автобой (премиум autoUnlocked): тренер сам атакует и меняет бойцов.
+  // Настройки липкие между боями (localStorage, не сейв).
+  _auto: localStorage.getItem('mw-auto-on') === '1',
+  _speed: [1, 2, 3].includes(+localStorage.getItem('mw-auto-speed')) ? +localStorage.getItem('mw-auto-speed') : 1,
+
   el(id) { return document.getElementById(id); },
 
   advance() {
@@ -26,7 +31,11 @@ const Battle = {
   say(text) {
     this.el('bt-menu').innerHTML = '';
     this.el('bt-log').innerHTML = text + ' <span class="next">▼</span>';
-    return new Promise((res, rej) => { this._sayResolve = res; this._sayReject = rej; });
+    return new Promise((res, rej) => {
+      this._sayResolve = res; this._sayReject = rej;
+      // автобой сам листает реплики; клик/Enter по-прежнему работают
+      if (this._auto && this.active) setTimeout(() => this.advance(), 650 / this._speed);
+    });
   },
 
   // Сейвскам в бою: снапшот ОЗ/ПП/статусов обеих команд + сфер + активных бойцов
@@ -289,8 +298,8 @@ const Battle = {
     const r = this.calcDamage(att, def, move, attSide === 'player');
     def.hp = Math.max(0, def.hp - r.dmg);
     this.lungeFx(attSide);
-    // удар прилетает в пике выпада
-    await new Promise(res => setTimeout(res, 150));
+    // удар прилетает в пике выпада (в автобое пауза сжимается ускорением)
+    await new Promise(res => setTimeout(res, this._auto ? 150 / this._speed : 150));
     sfx('hit');
     this.hitFx(attSide === 'player' ? 'enemy' : 'player');
     this.refresh(this._pm, this._em);
@@ -323,6 +332,67 @@ const Battle = {
   firstAlive(party) {
     for (let i = 0; i < party.length; i++) if (party[i].hp > 0) return i;
     return -1;
+  },
+
+  // ---------- автобой ----------
+
+  // Умение для автобоя: приоритет эффективности типа (×2 > ×1 > ×½),
+  // внутри одной эффективности — ожидаемый урон (сила × STAB × точность)
+  autoPickMove(pm, em) {
+    const avail = pm.moves.filter(mv => mv.pp > 0);
+    if (!avail.length) return Object.assign({}, STRUGGLE);
+    let best = avail[0], bestKey = -1;
+    for (const mv of avail) {
+      const eff = effMult(mv.type, monType(em));
+      const key = eff * 10000 + mv.power * (mv.type === monType(pm) ? 1.3 : 1) * (mv.acc / 100);
+      if (key > bestKey) { bestKey = key; best = mv; }
+    }
+    return best;
+  },
+
+  // Замена после нокаута: самый выгодный по типу против текущего врага,
+  // при равной эффективности — самый прокачанный
+  autoPickSwitch(party, curIdx, em) {
+    let best = -1, bestKey = -1;
+    for (let i = 0; i < party.length; i++) {
+      const m = party[i];
+      if (m.hp <= 0 || i === curIdx) continue;
+      const avail = m.moves.filter(mv => mv.pp > 0);
+      const eff = avail.length ? Math.max(...avail.map(mv => effMult(mv.type, monType(em)))) : 1;
+      const key = eff * 10000 + m.level;
+      if (key > bestKey) { bestKey = key; best = i; }
+    }
+    return best;
+  },
+
+  setAuto(v) {
+    this._auto = !!v;
+    try { localStorage.setItem('mw-auto-on', this._auto ? '1' : '0'); } catch (e) {}
+    this.updateAutoBtns();
+    // включили посреди реплики — сразу листаем; если открыто меню действий —
+    // жмём «Атака» за игрока; прочие меню игрок довыбирает сам, дальше ведёт авто
+    if (this._auto && this._sayResolve) this.advance();
+    if (this._auto && this._menuResolve && this._menuKind === 'actions') this._pickMenu(0, this._menuOptions);
+  },
+
+  cycleSpeed() {
+    this._speed = this._speed >= 3 ? 1 : this._speed + 1;
+    try { localStorage.setItem('mw-auto-speed', String(this._speed)); } catch (e) {}
+    this.updateAutoBtns();
+  },
+
+  updateAutoBtns() {
+    const box = this.el('bt-autobox');
+    if (!box) return;
+    const on = this.active && typeof autoUnlocked !== 'undefined' && autoUnlocked;
+    box.style.display = on ? 'flex' : 'none';
+    if (!on) return;
+    const bAuto = this.el('bt-auto'), bSpeed = this.el('bt-speed');
+    bAuto.textContent = this._auto ? '⏸ Авто' : '▶ Авто';
+    bAuto.style.borderColor = this._auto ? 'var(--ui-accent)' : '';
+    bAuto.style.color = this._auto ? 'var(--ui-accent)' : '';
+    bSpeed.textContent = '×' + this._speed;
+    bSpeed.style.display = this._auto ? '' : 'none';
   },
 
   async pickSwitch(party, currentIdx, forced) {
@@ -361,6 +431,7 @@ const Battle = {
     this._enemyRef = enemyParty;
     this._battleSave = null;
     this.updateScumBtns();
+    this.updateAutoBtns();
 
     const setActive = () => { this._pm = party[pi]; this._em = enemyParty[ei]; this.refresh(this._pm, this._em); };
     setActive();
@@ -384,22 +455,32 @@ const Battle = {
       try {
       const pm = party[pi], em = enemyParty[ei];
       this.note('Что будет делать ' + monName(pm) + '?');
-      const actions = [
-        { label: 'Атака' },
-        opts.kind === 'wild'
-          ? { label: 'Поймать', small: 'сфер: ' + G.orbs, disabled: G.orbs < 1 }
-          : { label: 'Поймать', small: 'нельзя: чужой', disabled: true },
-        { label: 'Предметы' },
-        { label: 'Братва' },
-        { label: 'Бежать' },
-      ];
-      const act = await this.menu(actions);
+      let act;
+      if (this._auto) {
+        // автобой v1: только атака — без зелий, сфер и побегов
+        act = 0;
+      } else {
+        const actions = [
+          { label: 'Атака' },
+          opts.kind === 'wild'
+            ? { label: 'Поймать', small: 'сфер: ' + G.orbs, disabled: G.orbs < 1 }
+            : { label: 'Поймать', small: 'нельзя: чужой', disabled: true },
+          { label: 'Предметы' },
+          { label: 'Братва' },
+          { label: 'Бежать' },
+        ];
+        this._menuKind = 'actions';
+        act = await this.menu(actions);
+        this._menuKind = null;
+      }
 
       let playerMove = null;
       let skipEnemyTurn = false;
 
       if (act === 0) {
-        if (!pm.moves.some(mv => mv.pp > 0)) {
+        if (this._auto) {
+          playerMove = this.autoPickMove(pm, em);
+        } else if (!pm.moves.some(mv => mv.pp > 0)) {
           this.note('Все ПП исчерпаны!');
           const si = await this.menu([{ label: 'Отчаянный удар', small: 'Обычный · сила 35 · бьёт отдачей' }], true);
           if (si === -1) continue;
@@ -582,7 +663,9 @@ const Battle = {
           result = 'lose';
           break battleLoop;
         }
-        const si = await this.pickSwitch(party, pi, true);
+        const si = this._auto
+          ? this.autoPickSwitch(party, pi, enemyParty[ei])
+          : await this.pickSwitch(party, pi, true);
         pi = si >= 0 ? si : alive;
         if (party[pi].hp <= 0) pi = alive;
         setActive();
@@ -632,6 +715,7 @@ const Battle = {
     this.active = false;
     this._battleSave = null;
     this.updateScumBtns();
+    this.updateAutoBtns();
     this.el('battle').classList.add('hidden');
     return result;
   },

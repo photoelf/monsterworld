@@ -21,6 +21,8 @@ const WARDROBE_PRICE_STARS = 15; // цена гардероба игрока, XT
 const MONGEN_PRICE_STARS = 25;   // цена одной генерации заказного братишки, XTR
 const SCOOT_PRICE_STARS = 50;    // цена премиум-маунта «Электросамокат», XTR
 const SCUM_PRICE_STARS = 10;     // цена режима сейвскамера, XTR
+const AUTO_PRICE_STARS = 50;     // цена автобоя, XTR
+const GRIND_PRICE_STARS = 100;   // цена автокача (бандл: требует купленный автобой), XTR
 
 // Товары: once — одноразовая разблокировка (KV-флаг), иначе счётчик кредитов
 const PRODUCTS = {
@@ -45,6 +47,14 @@ const PRODUCTS = {
          title: 'Режим сейвскамера',
          desc: 'Сохраняйся и откатывайся прямо в бою — переигрывай любой удар. Навсегда.',
          thanks: '⭐ Спасибо! Режим сейвскамера открыт — включи его в настройках.' },
+  auto: { once: true, price: AUTO_PRICE_STARS,     key: id => 'auto:' + id,
+         title: 'Автобой',
+         desc: 'Тренер сам ведёт бой: умные атаки, подмены и ускорение ×2/×3. Навсегда.',
+         thanks: '⭐ Спасибо! Автобой открыт — кнопки Авто и скорости появятся в бою.' },
+  grind: { once: true, price: GRIND_PRICE_STARS,   key: id => 'grind:' + id,
+         title: 'Автокач',
+         desc: 'Тренер сам бегает по дикой зоне и качает братву в автобоях. Навсегда.',
+         thanks: '⭐ Спасибо! Автокач открыт — кнопка появится в дикой зоне.' },
 };
 
 const INDEX_KEY = 'idx';
@@ -404,6 +414,8 @@ export default {
       const prod = PRODUCTS[body.product] ? body.product : 'spr';
       const p = PRODUCTS[prod];
       if (p.once && await env.SNAPS.get(p.key(b.key))) return json({ err: 'already unlocked' }, 409);
+      // автокач — бандл поверх автобоя: без купленного автобоя не продаём (и VIP тоже)
+      if (prod === 'grind' && !(await env.SNAPS.get('auto:' + b.key))) return json({ err: 'need auto' }, 409);
       if (b.vip) {
         if (p.once) await env.SNAPS.put(p.key(b.key), 'vip');
         else { const c = parseInt(await env.SNAPS.get(p.key(b.key)), 10) || 0; await env.SNAPS.put(p.key(b.key), String(c + 1)); }
@@ -446,12 +458,14 @@ export default {
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const b = await buyerKey(env, body);
       if (badBuyer(b)) return json({});
-      const [spr, scoot, scum] = await Promise.all([
+      const [spr, scoot, scum, auto, grind] = await Promise.all([
         env.SNAPS.get('unlock:' + b.key),
         env.SNAPS.get('scoot:' + b.key),
         env.SNAPS.get('scum:' + b.key),
+        env.SNAPS.get('auto:' + b.key),
+        env.SNAPS.get('grind:' + b.key),
       ]);
-      return json({ spr: !!spr, scoot: !!scoot, scum: !!scum, vip: b.vip });
+      return json({ spr: !!spr, scoot: !!scoot, scum: !!scum, auto: !!auto, grind: !!grind, vip: b.vip });
     }
 
     // --- гардероб: какие аксессуары реально куплены (по ключу покупателя) ---
@@ -546,7 +560,9 @@ export default {
           });
           return new Response('ok');
         }
-        const m = payload.match(/^(spr|wrd|mon|scoot):(.+)$/);
+        // ВСЕ продаваемые товары обязаны быть в этом regex — иначе оплата
+        // пройдёт, а выдачи не будет. Новый товар = дописать сюда.
+        const m = payload.match(/^(spr|wrd|mon|scoot|scum|auto|grind):(.+)$/);
         if (m) {
           const p = PRODUCTS[m[1]];
           const id = cleanId(m[2]);

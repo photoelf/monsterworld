@@ -338,6 +338,14 @@ function makeMonster(speciesSeed, stage, level) {
   return m;
 }
 
+// Базовая «мощь» — потенциал экземпляра независимо от уровня:
+// сумма базовых статов вида × множитель финальной стадии × шайни-бонус
+function monPotential(m) {
+  const sp = getSpecies(m.speciesSeed);
+  const b = sp.stages[0].base;
+  return Math.round((b.hp + b.atk + b.def + b.spd) * sp.stages[sp.chainLen - 1].mult * (m.shiny ? 1.18 : 1));
+}
+
 function monName(m) { return m.nick || getSpecies(m.speciesSeed).stages[m.stage].name; }
 function monSpeciesName(m) { return getSpecies(m.speciesSeed).stages[m.stage].name; }
 function monType(m) { return getSpecies(m.speciesSeed).stages[m.stage].type; }

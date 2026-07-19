@@ -392,6 +392,12 @@ function updateHUD() {
   }
   const s = document.getElementById('hud-stats');
   const px = Math.floor(G.player.x), py = Math.floor(G.player.y);
+  // кнопка автокача — у купивших, в дикой зоне (или пока он включён)
+  const grindBtn = document.getElementById('t-grind');
+  if (grindBtn) {
+    grindBtn.classList.toggle('hidden',
+      !(typeof grindUnlocked !== 'undefined' && grindUnlocked && (GRIND_ON || grindZoneAt(px, py))));
+  }
   s.innerHTML = '🔮 <b>' + G.orbs + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
     '</b> · 🏆 <b>' + G.achievements.size + '</b> · ' + PHASE_ICON[G.phase] + (G.weather === 'rain' ? '☔' : '') + '<br>' +
     '<span style="opacity:.7">📕 ' + G.dex.caught.size + '/' + G.dex.seen.size +
@@ -566,9 +572,9 @@ function loadGame() {
   G.pvpOut = data.pvpOut || null;
   G.badges = data.badges || [];
   G.dex = {
-    seen: new Set(data.dexSeen || []),
-    caught: new Set(data.dexCaught || []),
-    shiny: new Set(data.dexShiny || []),
+    seen: new Set((data.dexSeen || []).map(s => s >>> 0)),
+    caught: new Set((data.dexCaught || []).map(s => s >>> 0)),
+    shiny: new Set((data.dexShiny || []).map(s => s >>> 0)),
   };
   G.fountains = data.fountains || [];
   G.usedNests = new Set(data.usedNests || []);
@@ -580,6 +586,10 @@ function loadGame() {
                             eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0 }, data.stats || {});
   G.clock = data.clock || 0;
   G.party = data.party.map(reviveOwnedMon);
+  // Инвариант братопедии: всё, чем игрок владеет, числится пойманным —
+  // чинит сейвы, где запись о поимке когда-то потерялась
+  for (const m of G.party) dexCaught(m);
+  for (const m of G.storage) dexCaught(m);
   G.defeated = new Set(data.defeated || []);
   G.picked = new Set(data.picked || []);
   G.outfit = Object.assign({}, DEFAULT_OUTFIT, data.outfit || {});
@@ -906,6 +916,7 @@ function nearestFountain() {
 
 function afterBattle(result) {
   if (result === 'lose') {
+    if (GRIND_ON) setGrind(false, true); // братва откисла — автокач стоп
     const f = nearestFountain();
     G.player.x = f ? f.x : G.spawn.x;
     G.player.y = f ? f.y : G.spawn.y;
@@ -967,6 +978,10 @@ function onTileEnter(tx, ty) {
   if ((tile0 === T.DESERT || tile0 === T.DESERTTALL) && !G.stats.sawDesert) {
     G.stats.sawDesert = 1;
     toast('🏜 Пустыня! Здесь кишит огненная и электрическая братва.');
+  }
+  // подсказка про автокач — купившим, при входе в дикую зону
+  if (typeof grindUnlocked !== 'undefined' && grindUnlocked && !GRIND_ON && grindZoneAt(tx, ty)) {
+    hint('grind', '🤖 Автокач: жми ' + (IS_MOBILE ? 'кнопку 🤖' : 'клавишу G') + ' — тренер качает братву сам.');
   }
   // яйцо зреет от шагов
   if (G.egg) {
@@ -1104,8 +1119,10 @@ function tradeEscrow(src, idx) {
   return m;
 }
 
-// Полученный монстрик идёт в команду, при полной — в хранилище
+// Полученный монстрик идёт в команду, при полной — в хранилище.
+// Здесь же гарантия братопедии: всё полученное сразу «поймано»
 function tradeReceive(received) {
+  dexCaught(received);
   if (G.party.length < 6) { G.party.push(received); return 'party'; }
   G.storage.push(received);
   return 'store';
@@ -1428,13 +1445,52 @@ function storageRelease(i) {
   return true;
 }
 
+// Сортировка кармана: отображение сортируется, сам G.storage не трогаем
+// (индексы в нём используют питомник/обмены). Выбор живёт в localStorage.
+const BOX_SORTS = [
+  { id: 'date', label: 'Дата', val: null },
+  { id: 'level', label: 'Ур.', val: m => m.level },
+  { id: 'hp', label: 'ОЗ', val: m => m.maxHp },
+  { id: 'atk', label: 'АТК', val: m => m.atk },
+  { id: 'def', label: 'ЗАЩ', val: m => m.def },
+  { id: 'spd', label: 'СКР', val: m => m.spd },
+  { id: 'pow', label: '💪 Мощь', val: m => monPotential(m) },
+];
+let boxSort = localStorage.getItem('mw-box-sort') || 'date';
+let boxSortAsc = (localStorage.getItem('mw-box-sort-asc') ?? '1') === '1';
+
 function renderStorage() {
   document.getElementById('storage-info').textContent =
     G.storage.length ? 'В кармане: ' + G.storage.length + '. Отсюда можно брать в братву, для яиц и обменов.' :
     'Пусто. Сюда попадают пойманные при полной братве — и кого сам уберёшь из братвы.';
+
+  const sortBar = document.getElementById('storage-sort');
+  sortBar.innerHTML = '';
+  if (G.storage.length > 1) {
+    for (const s of BOX_SORTS) {
+      const b = document.createElement('button');
+      b.textContent = s.label + (s.id === boxSort ? (boxSortAsc ? ' ▲' : ' ▼') : '');
+      b.style.cssText = 'font-size:12px;padding:6px 10px;';
+      if (s.id === boxSort) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+      b.onclick = () => {
+        if (boxSort === s.id) boxSortAsc = !boxSortAsc;
+        else { boxSort = s.id; boxSortAsc = s.id === 'date'; } // дата — по умолчанию старые сверху, статы — сильные сверху
+        localStorage.setItem('mw-box-sort', boxSort);
+        localStorage.setItem('mw-box-sort-asc', boxSortAsc ? '1' : '0');
+        renderStorage();
+      };
+      sortBar.appendChild(b);
+    }
+  }
+
+  const entries = G.storage.map((m, i) => ({ m, i }));
+  const sd = BOX_SORTS.find(s => s.id === boxSort) || BOX_SORTS[0];
+  const dir = boxSortAsc ? 1 : -1;
+  entries.sort((a, b) => (sd.val ? (sd.val(a.m) - sd.val(b.m)) * dir : (a.i - b.i) * dir) || a.i - b.i);
+
   const rows = document.getElementById('storage-rows');
   rows.innerHTML = '';
-  G.storage.forEach((m, i) => {
+  entries.forEach(({ m, i }) => {
     const st = getSpecies(m.speciesSeed).stages[m.stage];
     const t = TYPE_INFO[st.type];
     const row = document.createElement('div');
@@ -1444,7 +1500,8 @@ function renderStorage() {
     info.className = 'info';
     info.innerHTML = '<span class="nm">' + (m.shiny ? '✨' : '') + monName(m) + '</span> Ур.' + m.level +
       ' <span style="color:' + t.color + '">' + t.ru + '</span>' +
-      '<div style="opacity:.75;font-size:11px">ОЗ ' + m.maxHp + ' · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd + '</div>';
+      '<div style="opacity:.75;font-size:11px">ОЗ ' + m.maxHp + ' · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd +
+      ' · 💪 ' + monPotential(m) + '</div>';
     row.appendChild(info);
     const bTake = document.createElement('button');
     bTake.textContent = 'В братву';
@@ -1634,6 +1691,81 @@ function tryFishing() {
   }, 1100);
 }
 
+// ===== Автокач (премиум grindUnlocked): тренер сам бегает по дикой зоне =====
+// Бои идут автобоем (setAuto(true) при старте), ловли нет — только кач.
+// Стоп: игрок тронул управление, вышли из зоны (телепорт), братва откисла.
+
+// Группы «своей» зоны: бегаем только по тайлам стартовой группы, в города не заходим
+const GRIND_ZONES = [
+  new Set([T.WATER]),
+  new Set([T.GRASS, T.TALL, T.FLOWER]),
+  new Set([T.SNOW, T.SNOWTALL]),
+  new Set([T.DESERT, T.DESERTTALL]),
+];
+
+let GRIND_ON = false;
+let _grindZone = null;
+let _grindDir = { x: 0, y: 0 };
+let _grindDirT = 0;
+let _grindLastPos = { x: 0, y: 0, t: 0 };
+
+function grindZoneAt(tx, ty) {
+  if (World.cityInfoAt(tx, ty)) return null;
+  const t = World.tileAt(tx, ty);
+  return GRIND_ZONES.find(z => z.has(t)) || null;
+}
+
+function setGrind(v, silent) {
+  if (v && !GRIND_ON) {
+    if (typeof grindUnlocked === 'undefined' || !grindUnlocked) return;
+    const zone = grindZoneAt(Math.floor(G.player.x), Math.floor(G.player.y));
+    if (!zone) { toast('🤖 Автокач работает в дикой зоне: высокая трава, вода, снег, пустыня.'); return; }
+    _grindZone = zone;
+    _grindDirT = 0;
+    _grindLastPos = { x: G.player.x, y: G.player.y, t: 0 };
+    GRIND_ON = true;
+    Battle.setAuto(true); // кач — только автобоем
+    toast('🤖 Автокач включён! Тронь управление — остановится.');
+  } else if (!v && GRIND_ON) {
+    GRIND_ON = false;
+    if (!silent) toast('🤖 Автокач выключен.');
+  }
+  const b = document.getElementById('t-grind');
+  if (b) b.classList.toggle('on', GRIND_ON);
+}
+
+// Куда бежать: держимся стартовой зоны, у препятствий и на границе меняем курс
+function grindVector(dt) {
+  const p = G.player;
+  // выпали из зоны (телепорт, панель, край) — стоп
+  if (grindZoneAt(Math.floor(p.x), Math.floor(p.y)) !== _grindZone) {
+    setGrind(false);
+    return { x: 0, y: 0 };
+  }
+  _grindDirT -= dt;
+  // застряли на месте — перевыбрать курс
+  _grindLastPos.t += dt;
+  if (_grindLastPos.t > 0.5) {
+    if (Math.hypot(p.x - _grindLastPos.x, p.y - _grindLastPos.y) < 0.15) _grindDirT = 0;
+    _grindLastPos.x = p.x; _grindLastPos.y = p.y; _grindLastPos.t = 0;
+  }
+  const ahead = (d, dist) => grindZoneAt(Math.floor(p.x + d.x * dist), Math.floor(p.y + d.y * dist));
+  if (_grindDirT > 0 && ahead(_grindDir, 1.2) === _grindZone) return _grindDir;
+  // перевыбор: случайное направление, которое держит в зоне и не упирается в стену
+  const dirs = [];
+  for (let i = 0; i < 8; i++) { const a = Math.PI * 2 * i / 8; dirs.push({ x: Math.cos(a), y: Math.sin(a) }); }
+  for (let i = dirs.length - 1; i > 0; i--) { const j = Math.floor(Math.random() * (i + 1)); const t = dirs[i]; dirs[i] = dirs[j]; dirs[j] = t; }
+  for (const d of dirs) {
+    if (ahead(d, 1.4) === _grindZone && ahead(d, 0.8) === _grindZone) {
+      _grindDir = d;
+      _grindDirT = 0.8 + Math.random() * 1.2;
+      return d;
+    }
+  }
+  _grindDirT = 0.4; // некуда идти — постоим и попробуем снова
+  return { x: 0, y: 0 };
+}
+
 // ===== Движение и цикл =====
 
 function step(dt) {
@@ -1660,6 +1792,10 @@ function step(dt) {
     if (keys.has('ArrowRight') || keys.has('KeyD')) vx += 1;
     if (keys.has('ArrowUp') || keys.has('KeyW')) vy -= 1;
     if (keys.has('ArrowDown') || keys.has('KeyS')) vy += 1;
+  }
+  if (GRIND_ON) {
+    if (vx || vy) setGrind(false); // игрок взял управление — автокач гаснет
+    else { const gv = grindVector(dt); vx = gv.x; vy = gv.y; }
   }
 
   const p = G.player;
@@ -2076,6 +2212,23 @@ function renderShop() {
       () => {
         if (scumUnlocked) { toast('💾 Уже куплено — вкл/выкл в настройках.'); return; }
         if (IS_TMA) netBuyScum(() => { setScum(true); toast('💾 Сейвскамер твой и включён! Кнопки 💾/⏪ — в бою.'); renderShop(); });
+        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
+      });
+    shopSpecialRow(rows, '⚔️ Автобой', 'Тренер сам ведёт бой: атаки по эффективности, умные подмены, ускорение ×2/×3. Навсегда.',
+      autoUnlocked ? '<span style="opacity:.7">куплено</span>' : AUTO_PRICE + '⭐',
+      autoUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      () => {
+        if (autoUnlocked) { toast('⚔️ Уже куплено — кнопки Авто и ×2 ждут в бою.'); return; }
+        if (IS_TMA) netBuyAuto(() => { toast('⚔️ Автобой твой! Кнопки Авто и ×2 — в бою.'); renderShop(); });
+        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
+      });
+    shopSpecialRow(rows, '🏃 Автокач', 'Тренер сам бегает по дикой зоне и качает братву автобоями. Нужен Автобой. Навсегда.',
+      grindUnlocked ? '<span style="opacity:.7">куплено</span>' : GRIND_PRICE + '⭐' + (autoUnlocked ? '' : ' <span style="opacity:.6">(нужен Автобой)</span>'),
+      grindUnlocked ? 'Куплено' : !autoUnlocked ? 'Нужен Автобой' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      () => {
+        if (grindUnlocked) { toast('🏃 Уже куплено — кнопка Автокач ждёт в дикой зоне.'); return; }
+        if (!autoUnlocked) { toast('🏃 Автокач идёт бандлом к Автобою — сначала купи ⚔️ Автобой.'); return; }
+        if (IS_TMA) netBuyGrind(() => { toast('🏃 Автокач твой! Кнопка появится в дикой траве и на воде.'); renderShop(); });
         else toast('Покупка за Stars — в Telegram: @poketmons_bot');
       });
     return;
@@ -2590,8 +2743,12 @@ function renderSettings() {
   sndBtn.onclick = () => {
     setSoundOn(!SOUND_ON);
     sfx('pickup'); // слышно сразу, что звук вернулся (при выкл — тишина)
+    if (!SOUND_ON) Music.mute(); else if (MUSIC_ON) Music.start();
     renderSettings();
   };
+  const musBtn = document.getElementById('set-music');
+  musBtn.textContent = MUSIC_ON ? '🌧 Эмбиент: вкл' : '🌧 Эмбиент: выкл';
+  musBtn.onclick = () => { setMusicOn(!MUSIC_ON); renderSettings(); };
   // раскладка джойстика — только на тач-устройствах
   const joyBtn = document.getElementById('set-joyside');
   if (IS_MOBILE) {
@@ -3388,7 +3545,7 @@ function openMonDetail(i) {
 
   if (i > 0) {
     const bLead = document.createElement('button');
-    bLead.textContent = '⭐ Сделать лидером';
+    bLead.textContent = '👑 Сделать лидером';
     bLead.onclick = () => {
       G.party.splice(i, 1);
       G.party.unshift(m);
@@ -3428,6 +3585,7 @@ function initInput() {
     if (e.code === 'KeyP' && (G.state === 'world' || G.state === 'dex')) { toggleDex(); return; }
     if (e.code === 'KeyO' && (G.state === 'world' || G.state === 'ach')) { toggleAchievements(); return; }
     if (e.code === 'KeyF' && G.state === 'world') { tryFishing(); return; }
+    if (e.code === 'KeyG' && G.state === 'world') { setGrind(!GRIND_ON); return; }
     if (e.code === 'KeyT' && (G.state === 'world' || G.state === 'friend')) { toggleFriendPanel(); return; }
     if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
     if (e.code === 'Comma' && (G.state === 'world' || G.state === 'settings')) { toggleSettings(); return; }
@@ -3490,6 +3648,8 @@ function initTitle() {
   document.getElementById('btn-settings-close').onclick = () => toggleSettings();
   document.getElementById('bt-save').onclick = () => Battle.battleSave();
   document.getElementById('bt-load').onclick = () => Battle.battleReload();
+  document.getElementById('bt-auto').onclick = () => Battle.setAuto(!Battle._auto);
+  document.getElementById('bt-speed').onclick = () => Battle.cycleSpeed();
   document.getElementById('set-wardrobe').onclick = () => openWardrobe();
   document.getElementById('btn-wardrobe-close').onclick = () => closeWardrobe();
   document.getElementById('wrd-shop').onclick = () => openAccShop();
@@ -3600,6 +3760,7 @@ function initTouch() {
     else { keys.add('Shift'); runBtn.classList.add('on'); }
   });
   document.getElementById('t-fish').addEventListener('pointerdown', e => { e.preventDefault(); tryFishing(); });
+  document.getElementById('t-grind').addEventListener('pointerdown', e => { e.preventDefault(); setGrind(!GRIND_ON); });
   // меню-кнопки
   const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, settings: toggleSettings };
   document.querySelectorAll('#touch-menu .tbtn').forEach(btn => {
