@@ -898,7 +898,8 @@ async function startTowerRun(tw) {
       toast('📜 Награда башни: свиток «' + mv.name + '»!');
     }
     floor++;
-    if (!confirm('Этаж ' + (floor - 1) + ' пройден! Подняться выше? Этаж ' + floor +
+    // в автобое лезем вверх без вопросов — до проигрыша или ручного стопа
+    if (!Battle._auto && !confirm('Этаж ' + (floor - 1) + ' пройден! Подняться выше? Этаж ' + floor +
       ' будет сильнее, а братва НЕ лечится.')) break;
   }
   afterBattle(result);
@@ -917,6 +918,7 @@ function nearestFountain() {
 function afterBattle(result) {
   if (result === 'lose') {
     if (GRIND_ON) setGrind(false, true); // братва откисла — автокач стоп
+    if (Battle._auto) Battle.setAuto(false); // и автобой тоже: не жечь братву заново
     const f = nearestFountain();
     G.player.x = f ? f.x : G.spawn.x;
     G.player.y = f ? f.y : G.spawn.y;
@@ -2250,8 +2252,11 @@ function renderShop() {
     info.innerHTML = '<span class="nm">' + item.name + '</span> — ' + item.price + '₴' +
       ' <span style="opacity:.6">(есть: ' + (rodOwned ? 'да' : have) + ')</span><br><span style="opacity:.8">' + item.desc + '</span>';
     row.appendChild(info);
+    // кнопки-иконки, чтобы «Купить»+«Продать» не распирали ряд
     const btn = document.createElement('button');
-    btn.textContent = rodOwned ? 'Куплено' : 'Купить';
+    btn.textContent = rodOwned ? '✔' : '🛒';
+    btn.title = rodOwned ? 'Куплено' : 'Купить за ' + item.price + '₴';
+    btn.style.minWidth = '48px';
     btn.disabled = G.money < item.price || rodOwned;
     btn.onclick = () => {
       if (G.money < item.price) return;
@@ -2268,6 +2273,26 @@ function renderShop() {
       updateHUD();
     };
     row.appendChild(btn);
+    // продажа за полцены; свитки не продаются (они индивидуальны — им своя панель)
+    const sellPrice = Math.max(1, Math.floor(item.price / 2));
+    if (item.id !== 'scroll' && have > 0) {
+      const sell = document.createElement('button');
+      sell.textContent = '💰';
+      sell.title = 'Продать за ' + sellPrice + '₴';
+      sell.style.minWidth = '48px';
+      sell.onclick = () => {
+        if (item.id === 'orb') { if (G.orbs < 1) return; G.orbs--; }
+        else if (isCharm) { if (G.charms[charmKind] < 1) return; G.charms[charmKind]--; }
+        else { if (!G.bag[item.id]) return; G.bag[item.id]--; }
+        G.money += sellPrice;
+        sfx('pickup');
+        toast('💰 Продано: ' + item.name + ' (+' + sellPrice + '₴)');
+        renderShop();
+        updateHUD();
+        saveGame();
+      };
+      row.appendChild(sell);
+    }
     rows.appendChild(row);
   }
 }
@@ -2544,15 +2569,51 @@ function closeTrade() {
 
 // ===== Обучение со свитка =====
 
+// Сортировка свитков при обучении; дефолт — свежие сверху. Как в кармане:
+// сортируется только отображение, «Изучить» держит оригинальный индекс
+const TEACH_SORTS = [
+  { id: 'date', label: 'Дата', val: null },
+  { id: 'power', label: 'Сила', val: mv => mv.power },
+  { id: 'acc', label: 'Точн.', val: mv => mv.acc },
+  { id: 'pp', label: 'ПП', val: mv => mv.maxPp || ppForPower(mv.power) },
+];
+let teachSort = localStorage.getItem('mw-teach-sort') || 'date';
+let teachSortAsc = localStorage.getItem('mw-teach-sort-asc') === '1';
+
 function openTeach(mon) {
   document.getElementById('party-panel').classList.add('hidden');
   G.state = 'teach';
   const panel = document.getElementById('teach-panel');
   document.getElementById('teach-info').innerHTML =
     'Выбери свиток для <b style="color:var(--ui-accent)">' + monName(mon) + '</b>:';
+
+  const sortBar = document.getElementById('teach-sort');
+  sortBar.innerHTML = '';
+  if (G.scrolls.length > 1) {
+    for (const s of TEACH_SORTS) {
+      const b = document.createElement('button');
+      b.textContent = s.label + (s.id === teachSort ? (teachSortAsc ? ' ▲' : ' ▼') : '');
+      b.style.cssText = 'font-size:12px;padding:6px 10px;';
+      if (s.id === teachSort) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+      b.onclick = () => {
+        if (teachSort === s.id) teachSortAsc = !teachSortAsc;
+        else { teachSort = s.id; teachSortAsc = false; } // и дата, и статы — по убыванию: свежее/сильнее сверху
+        localStorage.setItem('mw-teach-sort', teachSort);
+        localStorage.setItem('mw-teach-sort-asc', teachSortAsc ? '1' : '0');
+        openTeach(mon);
+      };
+      sortBar.appendChild(b);
+    }
+  }
+
+  const entries = G.scrolls.map((mv, si) => ({ mv, si }));
+  const sd = TEACH_SORTS.find(s => s.id === teachSort) || TEACH_SORTS[0];
+  const dir = teachSortAsc ? 1 : -1;
+  entries.sort((a, b) => (sd.val ? (sd.val(a.mv) - sd.val(b.mv)) * dir : (a.si - b.si) * dir) || a.si - b.si);
+
   const rows = document.getElementById('teach-rows');
   rows.innerHTML = '';
-  G.scrolls.forEach((mv, si) => {
+  entries.forEach(({ mv, si }) => {
     const row = document.createElement('div');
     row.className = 'srow';
     const info = document.createElement('div');
@@ -2585,7 +2646,8 @@ function pickTeachSlot(mon, scrollIdx) {
     finish();
     return;
   }
-  // все 4 слота заняты — выбираем, что забыть
+  // все 4 слота заняты — выбираем, что забыть (сортировка тут ни к чему)
+  document.getElementById('teach-sort').innerHTML = '';
   document.getElementById('teach-info').innerHTML =
     'Какое умение <b style="color:var(--ui-accent)">' + monName(mon) + '</b> забудет ради «' + mv.name + '»?';
   const rows = document.getElementById('teach-rows');
