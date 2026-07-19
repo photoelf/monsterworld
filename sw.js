@@ -4,7 +4,7 @@
 // новая версия приезжает ТОЛЬКО целиком — установкой нового SW (бамп CACHE),
 // который качает все ассеты мимо HTTP-кэша (cache:'reload'). Иначе ловим микс
 // старых и новых файлов (GH Pages кэширует по 10 мин) — уже наступали (v19).
-const CACHE = 'monsterworld-v42';
+const CACHE = 'monsterworld-v43';
 const ASSETS = [
   './', './index.html',
   './js/tg.js', './js/net.js', './js/util.js', './js/music.js', './js/data.js', './js/world.js', './js/battle.js', './js/main.js', './js/pvp.js',
@@ -15,7 +15,7 @@ const ASSETS = [
 // мимо HTTP-кэша при каждом бампе версии — гонять столько трафика нельзя.
 // Отдельный долгоживущий кэш, наполняется лениво при первом проигрывании;
 // при смене треков поднять его версию (старый удалится в activate).
-const MUSIC_CACHE = 'monsterworld-music-v1';
+const MUSIC_CACHE = 'monsterworld-music-v2'; // v2: треки ужаты ~втрое (lame q9)
 
 self.addEventListener('install', e => {
   e.waitUntil(caches.open(CACHE)
