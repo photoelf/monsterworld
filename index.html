@@ -23,6 +23,10 @@
     /* объединённые безопасные зоны: вырезы телефона + шапка Telegram */
     --safe-top: max(env(safe-area-inset-top, 0px), var(--tg-top));
     --safe-bottom: max(env(safe-area-inset-bottom, 0px), var(--tg-bottom));
+    /* Клиренс для интерактива у нижнего края: safe-area на iPhone заканчивается
+       ровно по кромке домашней полоски, а её жест перехватывает тапы и ВЫШЕ неё —
+       нижние кнопки не нажимались. Держим ещё 24px запаса поверх safe-bottom. */
+    --safe-bottom-ui: calc(max(env(safe-area-inset-bottom, 0px), var(--tg-bottom)) + 24px);
     --safe-left: max(env(safe-area-inset-left, 0px), var(--tg-left));
     --safe-right: max(env(safe-area-inset-right, 0px), var(--tg-right));
   }
@@ -259,7 +263,7 @@
   .tbtn.on, .tbtn:active { background: rgba(255,215,94,.35); border-color: var(--ui-accent); }
   /* джойстик: тяни кружок в любую сторону — 360° */
   #joy-base {
-    position: absolute; left: max(16px, var(--safe-left)); bottom: max(18px, var(--safe-bottom));
+    position: absolute; left: max(16px, var(--safe-left)); bottom: var(--safe-bottom-ui);
     width: 148px; height: 148px; border-radius: 50%;
     background: rgba(38,38,54,.5); border: 2px solid var(--ui-border);
     pointer-events: auto; touch-action: none;
@@ -273,7 +277,7 @@
   #joy-base.on #joy-knob { background: rgba(255,215,94,.5); border-color: var(--ui-accent); }
   #touch-actions {
     position: absolute; right: max(14px, var(--safe-right));
-    bottom: max(26px, calc(var(--safe-bottom) + 14px));
+    bottom: calc(var(--safe-bottom-ui) + 6px);
     display: flex; flex-direction: column; gap: 14px;
   }
   #touch-actions .tbtn { width: 62px; height: 62px; border-radius: 50%; }
@@ -317,7 +321,7 @@
   /* панели — полноэкранные страницы с крупными кнопками */
   body.mobile .overlay {
     justify-content: flex-start; overflow-y: auto; overflow-x: hidden; gap: 10px;
-    padding: max(10px, var(--safe-top)) 12px calc(14px + var(--safe-bottom));
+    padding: max(10px, var(--safe-top)) 12px calc(14px + var(--safe-bottom-ui));
   }
   /* растяжки сверху/снизу: короткий контент центрируется, длинный — скроллится */
   body.mobile .overlay:not(#battle)::before,
@@ -369,7 +373,9 @@
     body.mobile .starter canvas { width: 72px; height: 72px; flex-shrink: 0; }
   }
   /* бой на мобильном */
-  body.mobile #battle { padding: 10px; gap: 8px; }
+  /* padding-bottom с клиренсом: боевые кнопки — самый нижний интерактив в игре,
+     без запаса «Бежать»/«Братва» перехватывала домашняя полоска iPhone */
+  body.mobile #battle { padding: 10px 10px calc(10px + var(--safe-bottom-ui)); gap: 8px; }
   body.mobile #bt-scene { max-width: none; }
   body.mobile #bt-ecanvas { width: min(31vw, 132px); height: auto; }
   body.mobile #bt-pcanvas { width: min(42vw, 190px); height: auto; }

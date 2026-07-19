@@ -602,6 +602,17 @@ const Battle = {
         setActive();
         await this.say('Вперёд, ' + monName(party[pi]) + '!');
       } else if (act === 4) {
+        // подтверждение: мисклик по «Бежать» выбрасывал из боя без шанса отыграть.
+        // Спрашиваем меню боя, а НЕ нативным confirm(): диалог заблокировал бы
+        // async-поток боя и сломал бы откат сейвскама (say/menu реджектятся).
+        // «Да, бежать» намеренно НЕ первым пунктом — иначе быстрый повторный тап
+        // в ту же точку подтверждал бы побег сам (как было с лавкой).
+        this.note('Точно бежать из боя?');
+        const sure = await this.menu([
+          { label: 'Остаться и драться' },
+          { label: '🏃 Да, бежать', small: 'бой закончится' },
+        ], true);
+        if (sure !== 1) continue;
         const chance = 0.6 + clamp((effSpd(pm) - effSpd(em)) / 100, -0.25, 0.35);
         if (Math.random() < chance) {
           await this.say(opts.kind === 'trainer'
