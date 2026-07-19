@@ -8,9 +8,9 @@ const G = {
   player: { x: 0.5, y: 0.5, dir: 'down', frame: 0, animT: 0, moving: false },
   spawn: { x: 0.5, y: 0.5 },
   party: [],
-  orbs: 15,
+  balls: { basic: 15, strong: 0, bro: 0, master: 0 },  // сферы ловли по типам (BALL_TYPES)
   money: 300,
-  bag: { potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0 },
+  bag: { potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0, megastone: 0 },
   scrolls: [],           // свитки умений (объекты умений)
   charms: { atk: 0, def: 0, spd: 0, hp: 0, exp: 0 },  // амулеты в сумке
   egg: null,             // яйцо из питомника: {speciesSeed, shiny, steps, inherit, from}
@@ -31,7 +31,7 @@ const G = {
   achievements: new Set(),
   stats: { trainersBeaten: 0, evolutions: 0, nests: 0, trades: 0, maxDist: 0,
            surfed: 0, fished: 0, towerBest: 0, legends: 0, taught: 0,
-           eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0 },
+           eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0, megas: 0 },
   clock: 0,              // игровое время, сек
   phase: 'day',          // day | evening | night | morning
   weather: 'clear',      // clear | rain
@@ -82,6 +82,9 @@ const ACHIEVEMENTS = [
   { id: 'ptrade1',  ic: '🤝', name: 'Настоящий друг',   desc: 'Обменяйся братишкой с другим игроком', test: () => G.stats.friendTrades >= 1 },
   { id: 'pvp1',     ic: '⚔️', name: 'Дуэлянт',          desc: 'Сыграй PvP-бой с другом',              test: () => G.stats.pvpBattles >= 1 },
   { id: 'pvpwin',   ic: '🥇', name: 'Гладиатор',        desc: 'Выиграй PvP-бой',                      test: () => G.stats.pvpWins >= 1 },
+  { id: 'mega1',    ic: '💠', name: 'Мегабратан',       desc: 'Проведи мегаэволюцию',                 test: () => (G.stats.megas || 0) >= 1 },
+  { id: 'cap100',   ic: '💯', name: 'Потолок',          desc: 'Доведи братана до ' + LEVEL_CAP + ' уровня',
+    test: () => G.party.some(m => m.level >= LEVEL_CAP) || G.storage.some(m => m.level >= LEVEL_CAP) },
 ];
 
 // Прогресс активного задания с доски
@@ -398,7 +401,7 @@ function updateHUD() {
     grindBtn.classList.toggle('hidden',
       !(typeof grindUnlocked !== 'undefined' && grindUnlocked && (GRIND_ON || grindZoneAt(px, py))));
   }
-  s.innerHTML = '🔮 <b>' + G.orbs + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
+  s.innerHTML = '🔮 <b>' + ballsTotal(G.balls) + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
     '</b> · 🏆 <b>' + G.achievements.size + '</b> · ' + PHASE_ICON[G.phase] + (G.weather === 'rain' ? '☔' : '') + '<br>' +
     '<span style="opacity:.7">📕 ' + G.dex.caught.size + '/' + G.dex.seen.size +
     (G.egg ? ' · 🥚 ' + G.egg.steps : '') +
@@ -456,7 +459,7 @@ function dumpOwnedMon(m) {
   return {
     speciesSeed: m.speciesSeed, stage: m.stage, level: m.level,
     exp: m.exp, hp: m.hp, moves: m.moves, status: m.status || null,
-    shiny: !!m.shiny, nick: m.nick || null, charm: m.charm || null,
+    shiny: !!m.shiny, mega: !!m.mega, nick: m.nick || null, charm: m.charm || null,
     customSprite: m.customSprite || null, palette: m.palette || null,
   };
 }
@@ -472,6 +475,8 @@ function reviveOwnedMon(md) {
     shiny: !!md.shiny, nick: safeNick(md.nick), charm: md.charm || null,
     customSprite: validCustomSprite(md.customSprite), palette: validPalette(md.palette),
   };
+  // мега только у финальной стадии с MEGA_LEVEL — импортированный код не подделает
+  m.mega = !!md.mega && m.stage === getSpecies(m.speciesSeed).chainLen - 1 && m.level >= MEGA_LEVEL;
   for (const mv of m.moves) {
     if (mv.maxPp === undefined) { mv.maxPp = ppForPower(mv.power); mv.pp = mv.maxPp; }
     if (mv.pp === undefined) mv.pp = mv.maxPp;
@@ -487,7 +492,7 @@ function buildSaveData() {
     seed: G.seed,
     x: G.player.x, y: G.player.y,
     spawn: G.spawn,
-    orbs: G.orbs,
+    balls: G.balls,
     money: G.money,
     bag: G.bag,
     badges: G.badges,
@@ -558,9 +563,11 @@ function loadGame() {
   World.init(G.seed);
   G.player.x = data.x; G.player.y = data.y;
   G.spawn = data.spawn || { x: 0.5, y: 0.5 };
-  G.orbs = data.orbs;
+  // сферы: старые сейвы хранили одно число orbs — переносим в обычные сферы
+  G.balls = Object.assign(emptyBalls(), data.balls || {});
+  if (!data.balls && data.orbs !== undefined) G.balls.basic = data.orbs | 0;
   G.money = data.money !== undefined ? data.money : 300;
-  G.bag = Object.assign({ potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0 }, data.bag || {});
+  G.bag = Object.assign({ potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0, megastone: 0 }, data.bag || {});
   G.scrolls = (data.scrolls || []).map(mv => Object.assign({ maxPp: ppForPower(mv.power) }, mv));
   G.charms = Object.assign({ atk: 0, def: 0, spd: 0, hp: 0, exp: 0 }, data.charms || {});
   G.egg = data.egg || null;
@@ -583,7 +590,7 @@ function loadGame() {
   G.achievements = new Set(data.achievements || []);
   G.stats = Object.assign({ trainersBeaten: 0, evolutions: 0, nests: 0, trades: 0, maxDist: 0,
                             surfed: 0, fished: 0, towerBest: 0, legends: 0, taught: 0,
-                            eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0 }, data.stats || {});
+                            eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0, megas: 0 }, data.stats || {});
   G.clock = data.clock || 0;
   G.party = data.party.map(reviveOwnedMon);
   // Инвариант братопедии: всё, чем игрок владеет, числится пойманным —
@@ -620,9 +627,9 @@ function newWorld(seedText) {
   G.seed = seedText ? strSeed(seedText) : (Math.random() * 4294967296) >>> 0;
   World.init(G.seed);
   G.party = [];
-  G.orbs = 15;
+  G.balls = Object.assign(emptyBalls(), { basic: 15 });
   G.money = 300;
-  G.bag = { potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0 };
+  G.bag = { potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0, megastone: 0 };
   G.scrolls = [];
   G.charms = { atk: 0, def: 0, spd: 0, hp: 0, exp: 0 };
   G.egg = null;
@@ -641,7 +648,7 @@ function newWorld(seedText) {
   G.achievements = new Set();
   G.stats = { trainersBeaten: 0, evolutions: 0, nests: 0, trades: 0, maxDist: 0,
               surfed: 0, fished: 0, towerBest: 0, legends: 0, taught: 0,
-              eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0 };
+              eggsHatched: 0, quests: 0, sawSnow: 0, sawDesert: 0, friendTrades: 0, pvpBattles: 0, pvpWins: 0, megas: 0 };
   G.clock = 0;
   G.defeated = new Set();
   G.picked = new Set();
@@ -947,14 +954,14 @@ function healAtFountain(tx, ty) {
     G.fountains.push({ id: fid, x: G.player.x, y: G.player.y });
     toast('⛲ Фонтан отмечен на карте — теперь сюда можно телепортироваться!');
   }
-  const needed = G.party.some(m => m.hp < m.maxHp || m.status || m.moves.some(mv => mv.pp < mv.maxPp)) || G.orbs < 10;
+  const needed = G.party.some(m => m.hp < m.maxHp || m.status || m.moves.some(mv => mv.pp < mv.maxPp)) || G.balls.basic < 10;
   if (needed) {
     for (const m of G.party) {
       m.hp = m.maxHp;
       m.status = null;
       m.moves.forEach(mv => { mv.pp = mv.maxPp; });
     }
-    if (G.orbs < 10) G.orbs = 10;
+    if (G.balls.basic < 10) G.balls.basic = 10;
     sfx('heal');
     toast('Фонтан лечит братву, снимает недуги и восполняет ПП!');
   }
@@ -997,9 +1004,19 @@ function onTileEnter(tx, ty) {
   const ik = tx + ',' + ty;
   if (World.itemAt(tx, ty) && !G.picked.has(ik)) {
     G.picked.add(ik);
-    G.orbs += 3;
+    // чем дальше от старта, тем ценнее находка
+    const lootLvl = World.levelAt(tx, ty);
+    if (lootLvl >= 55 && Math.random() < 0.35) {
+      G.balls.bro++;
+      toast('Найдена 🟣 братская сфера!');
+    } else if (lootLvl >= 30 && Math.random() < 0.4) {
+      G.balls.strong += 2;
+      toast('Найдено 2 🔷 крепких сферы!');
+    } else {
+      G.balls.basic += 3;
+      toast('Найдено 3 сферы ловли!');
+    }
     sfx('pickup');
-    toast('Найдено 3 сферы ловли!');
     updateHUD();
     saveGame();
   }
@@ -1072,7 +1089,7 @@ function tradeDecode(code) {
 function tradeMonDump(m) {
   return {
     speciesSeed: m.speciesSeed, stage: m.stage, level: m.level, exp: m.exp,
-    shiny: !!m.shiny, nick: m.nick || null,
+    shiny: !!m.shiny, mega: !!m.mega, nick: m.nick || null,
     customSprite: m.customSprite || null,   // едет к другу; в публичный пул не попадает (воркер отбрасывает)
     palette: m.palette || null,             // окрас заказного братишки
     moves: m.moves.map(mv => ({ name: mv.name, type: mv.type, power: mv.power, acc: mv.acc, maxPp: mv.maxPp })),
@@ -1085,9 +1102,11 @@ function tradeMonRevive(md) {
   const seed = md.speciesSeed >>> 0;
   const sp = getSpecies(seed);
   const stage = clamp(md.stage | 0, 0, sp.chainLen - 1);
-  const level = clamp(md.level | 0, 1, 70);
+  const level = clamp(md.level | 0, 1, LEVEL_CAP);
   const m = makeMonster(seed, stage, level);
   m.shiny = !!md.shiny;
+  // мега засчитывается только тому, кто её реально мог получить
+  m.mega = !!md.mega && stage === sp.chainLen - 1 && level >= MEGA_LEVEL;
   m.nick = safeNick(md.nick);
   m.customSprite = validCustomSprite(md.customSprite);
   m.palette = validPalette(md.palette);
@@ -1684,7 +1703,7 @@ function tryFishing() {
       G.state = 'world';
       startWildBattle(water[0], water[1], 'fish');
     } else {
-      G.orbs++;
+      G.balls.basic++;
       sfx('pickup');
       toast('Сорвалось! Но на крючке блеснула сфера (+1).');
       G.state = 'world';
@@ -2240,7 +2259,8 @@ function renderShop() {
     if (item.cat !== _shopCat) continue;
     const isCharm = item.id.startsWith('charm_');
     const charmKind = isCharm ? item.id.slice(6) : null;
-    const have = item.id === 'orb' ? G.orbs
+    const ballKind = item.id.startsWith('ball_') ? item.id.slice(5) : null;
+    const have = ballKind ? G.balls[ballKind]
       : item.id === 'scroll' ? G.scrolls.length
       : isCharm ? G.charms[charmKind]
       : G.bag[item.id];
@@ -2261,7 +2281,7 @@ function renderShop() {
     btn.onclick = () => {
       if (G.money < item.price) return;
       G.money -= item.price;
-      if (item.id === 'orb') G.orbs++;
+      if (ballKind) G.balls[ballKind]++;
       else if (item.id === 'scroll') {
         const mv = makeMove(mulberry32((Math.random() * 4294967296) >>> 0));
         G.scrolls.push(mv);
@@ -2281,7 +2301,7 @@ function renderShop() {
       sell.title = 'Продать за ' + sellPrice + '₴';
       sell.style.minWidth = '48px';
       sell.onclick = () => {
-        if (item.id === 'orb') { if (G.orbs < 1) return; G.orbs--; }
+        if (ballKind) { if (G.balls[ballKind] < 1) return; G.balls[ballKind]--; }
         else if (isCharm) { if (G.charms[charmKind] < 1) return; G.charms[charmKind]--; }
         else { if (!G.bag[item.id]) return; G.bag[item.id]--; }
         G.money += sellPrice;
@@ -2435,14 +2455,14 @@ function monSprite(m) {
     const img = customSpriteImg(m.customSprite);
     if (img) return img;
   }
-  return speciesSprite(m.speciesSeed, m.stage, m.shiny, false, m.palette);
+  return speciesSprite(m.speciesSeed, m.stage, m.shiny, false, m.palette, m.mega);
 }
 
 // Габариты отрисовки: кастомный PNG приводится к размеру процедурного
 // спрайта той же стадии (12/15/18), чтобы братишка не вымахал больше игрока
 function monSpriteDims(m, spr) {
   if (spr instanceof Image) {
-    const target = 12 + ((m.stage | 0) * 3);
+    const target = 12 + ((m.stage | 0) * 3) + (m.mega ? 4 : 0);
     const k = target / Math.max(spr.width, spr.height);
     return { w: Math.max(1, Math.round(spr.width * k)), h: Math.max(1, Math.round(spr.height * k)) };
   }
@@ -3388,7 +3408,10 @@ function openMonDetail(i) {
   info.style.cssText = 'text-align:left;font-size:13px;flex:1;min-width:0;line-height:1.6;';
   info.innerHTML =
     '<div>' + stageWord(m.stage) + ' · Ур.' + m.level + statusTag(m) + ' · <span style="color:' + t.color + '">' + t.ru + '</span> · ' +
-    (st.evolveLevel ? 'эво на ' + st.evolveLevel : 'финальная форма') + '</div>' +
+    (st.evolveLevel ? 'эво на ' + st.evolveLevel
+      : m.mega ? '<span style="color:var(--ui-accent)">💠 МЕГА-ФОРМА</span>'
+      : canMega(m) ? 'готов к 💠 мегаэволюции'
+      : 'финальная форма (мега с ' + MEGA_LEVEL + ' ур.)') + '</div>' +
     '<div class="bar" style="height:8px;margin:4px 0"><i class="' + (pct < 30 ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
     '<div style="opacity:.85">' + m.hp + '/' + m.maxHp + ' ОЗ · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd + '</div>' +
     '<div style="opacity:.85">Опыт: ' + m.exp + '/' + expToNext(m.level) + '</div>' +
@@ -3546,6 +3569,27 @@ function openMonDetail(i) {
       rerender();
     };
     acts.appendChild(sel);
+  }
+
+  // мегаэволюция: финальная стадия, MEGA_LEVEL+, тратит мега-камень
+  if (G.bag.megastone > 0 && canMega(m)) {
+    const bMega = document.createElement('button');
+    bMega.textContent = '💠 Мегаэволюция';
+    bMega.style.color = 'var(--ui-accent)';
+    bMega.onclick = () => {
+      if (!confirm('Провести мегаэволюцию ' + monName(m) + '? Мега-камень исчезнет, эффект навсегда: +35% ко всем статам.')) return;
+      G.bag.megastone--;
+      const ratio = m.hp / m.maxHp;
+      const oldName = monSpeciesName(m);
+      m.mega = true;
+      recalcStats(m);
+      m.hp = Math.max(1, Math.round(m.maxHp * ratio));
+      G.stats.megas = (G.stats.megas || 0) + 1;
+      sfx('catch');
+      toast('💠 ' + oldName + ' проходит МЕГАЭВОЛЮЦИЮ — теперь это ' + monSpeciesName(m) + '!');
+      rerender();
+    };
+    acts.appendChild(bMega);
   }
 
   if (G.bag.stone > 0 && st.evolveLevel !== null) {

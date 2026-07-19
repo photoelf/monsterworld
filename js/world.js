@@ -249,10 +249,12 @@ const World = {
     return SOLID_TILES.has(this.tileAt(x, y));
   },
 
-  // Уровень диких монстров растёт с удалением от точки старта
+  // Уровень диких монстров растёт с удалением от точки старта.
+  // Потолок поднят до 75 под левел-кап 100 — иначе на хайлевеле не с кем качаться
+  // (см. expGapMult: заведомо слабые противники почти не дают опыта).
   levelAt(x, y) {
     const dist = Math.max(Math.abs(x), Math.abs(y));
-    return clamp(2 + Math.floor(dist / 45), 2, 55);
+    return clamp(2 + Math.floor(dist / 40), 2, 75);
   },
 
   // Локальная фауна: у каждого региона 48x48 свои 4 вида
@@ -278,7 +280,7 @@ const World = {
     } else if (env && env.night && rng() < 0.45) {
       seed = findSpeciesOfType(hash2u(seed, 0x1417, this.seed), ['shadow', 'psychic']);
     }
-    const level = clamp(this.levelAt(x, y) + irange(rng, -1, 2) + ((env && env.lvlBonus) || 0), 2, 62);
+    const level = clamp(this.levelAt(x, y) + irange(rng, -1, 2) + ((env && env.lvlBonus) || 0), 2, 80);
     const sp = getSpecies(seed);
     let stage = 0;
     if (level >= 18 && sp.chainLen > 1 && rng() < 0.35) stage = 1;
@@ -295,7 +297,7 @@ const World = {
   // Монстр из гнезда: редкий вид с полной цепочкой, повышенный уровень, шанс сияния 1/16
   makeNestMonster(x, y, rng) {
     const seed = findSpeciesChain3(hash2u(x, y, this.seed ^ 0x6E57));
-    const level = clamp(this.levelAt(x, y) + 3 + irange(rng, 0, 2), 4, 62);
+    const level = clamp(this.levelAt(x, y) + 3 + irange(rng, 0, 2), 4, 80);
     const sp = getSpecies(seed);
     let stage = 0;
     if (level >= 14 && rng() < 0.6) stage = 1;
@@ -341,12 +343,19 @@ const World = {
     const team = [];
     for (let i = 0; i < size; i++) {
       const seed = hash2u(Math.floor(rng() * 100000), 71 + i, this.seed ^ 0x70E9);
-      const level = clamp(tw.level + floor * 2 + irange(rng, 0, 2), 4, 68);
+      const level = clamp(tw.level + floor * 2 + irange(rng, 0, 2), 4, 95);
       const sp = getSpecies(seed);
       let stage = 0;
       if (level >= 14 && sp.chainLen > 1) stage = 1;
       if (level >= 26 && sp.chainLen > 2) stage = 2;
-      team.push(makeMonster(seed, stage, level));
+      const m = makeMonster(seed, stage, level);
+      // глубокие этажи выставляют мега-форму — эндгейм-челлендж под левел-кап 100
+      if (floor >= 10 && stage === sp.chainLen - 1 && level >= MEGA_LEVEL && rng() < 0.35) {
+        m.mega = true;
+        recalcStats(m);
+        m.hp = m.maxHp;
+      }
+      team.push(m);
     }
     return team;
   },
@@ -386,7 +395,7 @@ const World = {
   traderOffer(td) {
     const rng = mulberry32(td.seed);
     const seed = hash2u(Math.floor(rng() * 100000), 53, this.seed ^ 0x7263);
-    const level = clamp(this.levelAt(td.x, td.y) + irange(rng, 1, 3), 3, 60);
+    const level = clamp(this.levelAt(td.x, td.y) + irange(rng, 1, 3), 3, 80);
     const sp = getSpecies(seed);
     let stage = 0;
     if (level >= 16 && sp.chainLen > 1 && rng() < 0.5) stage = 1;
@@ -431,7 +440,7 @@ const World = {
       const seed = rng() < 0.5
         ? this.regionSpeciesSeed(tr.x, tr.y, Math.floor(rng() * 4))
         : hash2u(Math.floor(rng() * 100000), 17, this.seed ^ 0x7777);
-      const level = clamp(tr.level + irange(rng, 0, 2), 2, 60);
+      const level = clamp(tr.level + irange(rng, 0, 2), 2, 80);
       const sp = getSpecies(seed);
       let stage = 0;
       if (level >= 16 && sp.chainLen > 1 && rng() < 0.5) stage = 1;
@@ -449,7 +458,7 @@ const World = {
     if (xm !== 6 || ym !== 6) return null;
     const bx = Math.floor(x / 12), by = Math.floor(y / 12);
     const u = hash2u(bx, by, this.seed ^ 0xAAAA);
-    const lvl = clamp(this.levelAt(x, y) + 4, 6, 60);
+    const lvl = clamp(this.levelAt(x, y) + 4, 6, 82);
     const city = this.nearestCityCenter(x, y);
     // половина городов — под супертренерами легендарной четвёрки
     const name = (u & 1)

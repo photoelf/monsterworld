@@ -44,7 +44,7 @@ const Battle = {
     this._battleSave = {
       party: G.party.map(m => ({ hp: m.hp, status: m.status, pp: m.moves.map(mv => mv.pp) })),
       enemy: (this._enemyRef || []).map(m => ({ hp: m.hp, status: m.status, pp: m.moves.map(mv => mv.pp) })),
-      orbs: G.orbs, pi: this._curPi, ei: this._curEi,
+      balls: Object.assign({}, G.balls), pi: this._curPi, ei: this._curEi,
     };
     toast('💾 Бой сохранён.');
   },
@@ -62,7 +62,7 @@ const Battle = {
     });
     restore(G.party, s.party);
     restore(this._enemyRef || [], s.enemy);
-    G.orbs = s.orbs; updateHUD();
+    G.balls = Object.assign({}, s.balls); updateHUD();
     this._reloadPi = s.pi; this._reloadEi = s.ei;
     if (this._menuResolve) {
       const r = this._menuResolve; this._menuResolve = null; this.el('bt-menu').innerHTML = '';
@@ -139,7 +139,7 @@ const Battle = {
     const cv = this.el(canvasId);
     // кастомный PNG: рисуем в размере процедурного спрайта той же стадии
     const custom = mon.customSprite && typeof customSpriteImg === 'function' ? customSpriteImg(mon.customSprite) : null;
-    const sp = custom || speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back, mon.palette);
+    const sp = custom || speciesSprite(mon.speciesSeed, mon.stage, mon.shiny, back, mon.palette, mon.mega);
     const d = typeof monSpriteDims === 'function' ? monSpriteDims(mon, sp) : { w: sp.width, h: sp.height };
     cv.width = 32; cv.height = 32;
     const ctx = cv.getContext('2d');
@@ -463,7 +463,7 @@ const Battle = {
         const actions = [
           { label: 'Атака' },
           opts.kind === 'wild'
-            ? { label: 'Поймать', small: 'сфер: ' + G.orbs, disabled: G.orbs < 1 }
+            ? { label: 'Поймать', small: 'сфер: ' + ballsTotal(G.balls), disabled: ballsTotal(G.balls) < 1 }
             : { label: 'Поймать', small: 'нельзя: чужой', disabled: true },
           { label: 'Предметы' },
           { label: 'Братва' },
@@ -500,13 +500,22 @@ const Battle = {
           playerMove = pm.moves[mi];
         }
       } else if (act === 1) {
-        // попытка поймать
-        G.orbs--;
+        // выбор сферы: показываем реальный шанс каждой по текущему состоянию цели
+        this.note('Какую сферу бросить в ' + monName(em) + '?');
+        const balls = BALL_TYPES.map(b => ({
+          id: b.id,
+          label: b.ic + ' ' + b.name + ' <span style="opacity:.7">×' + G.balls[b.id] + '</span>',
+          small: 'шанс ' + Math.round(ballCatchChance(b.id, em) * 100) + '%',
+          disabled: G.balls[b.id] < 1,
+        }));
+        const bi = await this.menu(balls, true);
+        if (bi === -1) continue;
+        const ball = balls[bi];
+        G.balls[ball.id]--;
         updateHUD();
         sfx('ball');
-        await this.say('Ты бросаешь сферу ловли...');
-        const baseCatch = [0.85, 0.55, 0.32][em.stage];
-        const p = clamp(baseCatch * (1.15 - em.hp / em.maxHp), 0.06, 0.95);
+        await this.say('Летит ' + BALL_BY_ID[ball.id].ic + ' ' + BALL_BY_ID[ball.id].name.toLowerCase() + '...');
+        const p = ballCatchChance(ball.id, em);
         if (Math.random() < p) {
           sfx('catch');
           await this.say('Поймал! ' + monName(em) + ' теперь с тобой!');
@@ -630,14 +639,15 @@ const Battle = {
         await this.say(monName(enemyParty[ei]) + ' теряет сознание!');
         const e = enemyParty[ei];
         const exp = e.level * (8 + 4 * e.stage) + 10;
+        // опыт режется, если боец сильно перерос противника (см. expGapMult)
         if (party[pi].hp > 0) {
           const mult = party[pi].charm === 'exp' ? 1.25 : 1;
-          await this.grantExpFlow(party[pi], Math.floor(exp * mult));
+          await this.grantExpFlow(party[pi], Math.max(1, Math.floor(exp * mult * expGapMult(party[pi].level, e.level))));
         }
         // общий опыт: живые запасные получают 40%
-        const shared = Math.max(1, Math.floor(exp * 0.4));
         for (let k = 0; k < party.length; k++) {
           if (k === pi || party[k].hp <= 0) continue;
+          const shared = Math.max(1, Math.floor(exp * 0.4 * expGapMult(party[k].level, e.level)));
           const msgs = grantExp(party[k], shared);
           for (const msg of msgs) {
             if (msg.kind === 'level') sfx('level');
@@ -687,8 +697,11 @@ const Battle = {
       if (opts.kind === 'trainer') {
         const reward = opts.reward || 100;
         G.money += reward;
-        G.orbs += 2;
-        await this.say('Победа над ' + opts.trainerName + '! Награда: ' + reward + '₴ и 2 сферы.');
+        // сильные тренеры отсыпают крепкие сферы, рядовые — обычные
+        const tough = (opts.enemyParty[0] || {}).level >= 40;
+        if (tough) G.balls.strong += 2; else G.balls.basic += 2;
+        await this.say('Победа над ' + opts.trainerName + '! Награда: ' + reward + '₴ и 2 ' +
+          (tough ? '🔷 крепких сферы' : 'сферы') + '.');
         if (opts.badgeId) {
           sfx('catch');
           await this.say('Ты получаешь ЗНАЧОК АРЕНЫ! Твоя братва бьёт на 3% сильнее за каждый значок.');
@@ -702,8 +715,12 @@ const Battle = {
           G.scrolls.push(mv);
           await this.say('Победа! Найдено ' + coins + '₴ и 📜 свиток «' + mv.name + '»!');
         } else if (Math.random() < 0.35) {
-          G.orbs += 1;
-          await this.say('Победа! Найдено ' + coins + '₴ и сфера ловли.');
+          // на хайлевеле с дикарей падают сферы посерьёзнее
+          const lvl = enemyParty[0].level;
+          const kind = lvl >= 55 && Math.random() < 0.3 ? 'bro' : lvl >= 30 ? 'strong' : 'basic';
+          G.balls[kind]++;
+          await this.say('Победа! Найдено ' + coins + '₴ и ' + BALL_BY_ID[kind].ic + ' ' +
+            BALL_BY_ID[kind].name.toLowerCase() + '.');
         } else {
           await this.say('Победа! Найдено ' + coins + '₴.');
         }

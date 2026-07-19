@@ -84,6 +84,60 @@ const CHARMS = {
   exp: { name: 'Амулет мудрости', ic: '🦉', desc: '+25% опыта в бою' },
 };
 
+// ===== Прогрессия и мегаэволюция =====
+
+const LEVEL_CAP = 100;   // потолок уровня (был 70 до эндгейм-патча)
+const MEGA_LEVEL = 75;   // с какого уровня доступна мегаэволюция
+const MEGA_MULT = 1.35;  // множитель статов мега-формы
+
+// Мегаэволюция доступна братану финальной стадии с MEGA_LEVEL уровня
+function canMega(m) {
+  if (!m || m.mega) return false;
+  const sp = getSpecies(m.speciesSeed);
+  return m.stage === sp.chainLen - 1 && m.level >= MEGA_LEVEL;
+}
+
+// ===== Сферы ловли =====
+// Четыре ступени: чем дороже сфера, тем выше множитель шанса. Шанс зависит
+// от стадии цели, её остатка ОЗ и УРОВНЯ — на хайлевеле дешёвая сфера почти
+// бесполезна, братану 90-го уровня нужна братская или златая.
+
+const BALL_TYPES = [
+  { id: 'basic',  ic: '🔮', name: 'Сфера ловли',    price: 80,   mult: 1,
+    desc: 'Обычная сфера. Берёт молодняк, на матёрых почти не действует.' },
+  { id: 'strong', ic: '🔷', name: 'Крепкая сфера',  price: 240,  mult: 1.7,
+    desc: 'Ловит в 1.7 раза увереннее обычной.' },
+  { id: 'bro',    ic: '🟣', name: 'Братская сфера', price: 700,  mult: 2.6,
+    desc: 'Ловит в 2.6 раза увереннее обычной — рабочий инструмент на хайлевеле.' },
+  { id: 'master', ic: '🟡', name: 'Златая сфера',   price: 7500, mult: 99, sure: true,
+    desc: 'Ловит кого угодно без осечек. Стоит как небольшой район.' },
+];
+const BALL_BY_ID = {};
+for (const b of BALL_TYPES) BALL_BY_ID[b.id] = b;
+
+function emptyBalls() {
+  const o = {};
+  for (const b of BALL_TYPES) o[b.id] = 0;
+  return o;
+}
+
+// Сумма всех сфер (для HUD и проверки «есть чем ловить»)
+function ballsTotal(balls) {
+  return BALL_TYPES.reduce((s, b) => s + (balls[b.id] | 0), 0);
+}
+
+// Шанс поимки: база по стадии × добивание × штраф за уровень × сила сферы.
+// Уровневый множитель: до 15 ур. не мешает, к 60 срезает вдвое, к 100 — втрое.
+function ballCatchChance(ballId, mon) {
+  const b = BALL_BY_ID[ballId];
+  if (!b) return 0;
+  if (b.sure) return 1;
+  const base = [0.85, 0.55, 0.32][mon.stage] || 0.32;
+  const hpF = 1.15 - mon.hp / mon.maxHp;                      // 0.15 (целый) .. 1.15 (при смерти)
+  const lvlF = 1 / (1 + Math.max(0, mon.level - 15) / 45);
+  return clamp(base * hpF * lvlF * b.mult, 0.02, 0.95);
+}
+
 // ===== Предметы лавки =====
 
 // Категории лавки (вкладки): id → подпись
@@ -99,10 +153,14 @@ const SHOP_ITEMS = [
   { id: 'superpotion', cat: 'potions', name: 'Суперзелье', price: 350, desc: 'Полностью восстанавливает ОЗ.' },
   { id: 'tonic',  cat: 'potions', name: 'Тоник',        price: 90,  desc: 'Снимает любой статусный эффект.' },
   { id: 'ether',  cat: 'potions', name: 'Эфир',         price: 250, desc: 'Восполняет все ПП умений одного братишки.' },
-  { id: 'orb',    cat: 'gear', name: 'Сфера ловли',  price: 80,  desc: 'Для поимки диких братишек.' },
+  { id: 'ball_basic',  cat: 'gear', name: '🔮 Сфера ловли',    price: 80,   desc: 'Обычная сфера. Берёт молодняк, на матёрых почти не действует.' },
+  { id: 'ball_strong', cat: 'gear', name: '🔷 Крепкая сфера',  price: 240,  desc: 'Ловит в 1.7 раза увереннее обычной.' },
+  { id: 'ball_bro',    cat: 'gear', name: '🟣 Братская сфера', price: 700,  desc: 'Ловит в 2.6 раза увереннее обычной — рабочий инструмент на хайлевеле.' },
+  { id: 'ball_master', cat: 'gear', name: '🟡 Златая сфера',   price: 7500, desc: 'Ловит кого угодно без осечек. Стоит как небольшой район.' },
   { id: 'scroll', cat: 'gear', name: 'Свиток умения', price: 400, desc: 'Случайное умение — научи любого братишку.' },
   { id: 'rod',    cat: 'gear', name: 'Удочка',       price: 600, desc: 'Рыбачь у воды клавишей F. Покупается один раз.' },
   { id: 'stone',  cat: 'gear', name: 'Камень эволюции', price: 1500, desc: 'Мгновенно эволюционирует братишку.' },
+  { id: 'megastone', cat: 'gear', name: '💠 Мега-камень', price: 8000, desc: 'Мегаэволюция для братана финальной стадии с ' + MEGA_LEVEL + ' уровня: +35% ко всем статам навсегда.' },
   { id: 'charm_atk', cat: 'charms', name: 'Амулет силы',    price: 800, desc: '+15% к атаке носителя.' },
   { id: 'charm_def', cat: 'charms', name: 'Амулет щита',    price: 800, desc: '+15% к защите носителя.' },
   { id: 'charm_spd', cat: 'charms', name: 'Амулет ветра',   price: 800, desc: '+15% к скорости носителя.' },
@@ -309,7 +367,7 @@ function findSpeciesChain3(baseSeed) {
 
 function recalcStats(m) {
   const st = getSpecies(m.speciesSeed).stages[m.stage];
-  const k = st.mult * m.level * (m.shiny ? 1.18 : 1);
+  const k = st.mult * m.level * (m.shiny ? 1.18 : 1) * (m.mega ? MEGA_MULT : 1);
   m.maxHp = Math.floor((14 + st.base.hp * k * 0.055) * (m.charm === 'hp' ? 1.12 : 1));
   m.atk = Math.floor((5 + st.base.atk * k * 0.045) * (m.charm === 'atk' ? 1.15 : 1));
   m.def = Math.floor((5 + st.base.def * k * 0.045) * (m.charm === 'def' ? 1.15 : 1));
@@ -330,6 +388,7 @@ function makeMonster(speciesSeed, stage, level) {
     hp: 0,
     status: null,
     shiny: false,
+    mega: false,
     nick: null,
     charm: null,
   };
@@ -343,19 +402,35 @@ function makeMonster(speciesSeed, stage, level) {
 function monPotential(m) {
   const sp = getSpecies(m.speciesSeed);
   const b = sp.stages[0].base;
-  return Math.round((b.hp + b.atk + b.def + b.spd) * sp.stages[sp.chainLen - 1].mult * (m.shiny ? 1.18 : 1));
+  return Math.round((b.hp + b.atk + b.def + b.spd) * sp.stages[sp.chainLen - 1].mult *
+    (m.shiny ? 1.18 : 1) * (m.mega ? MEGA_MULT : 1));
 }
 
-function monName(m) { return m.nick || getSpecies(m.speciesSeed).stages[m.stage].name; }
-function monSpeciesName(m) { return getSpecies(m.speciesSeed).stages[m.stage].name; }
+function monName(m) { return m.nick || monSpeciesName(m); }
+function monSpeciesName(m) {
+  return (m.mega ? 'Мега-' : '') + getSpecies(m.speciesSeed).stages[m.stage].name;
+}
 function monType(m) { return getSpecies(m.speciesSeed).stages[m.stage].type; }
-function expToNext(level) { return level * 20 + 15; }
+
+// Опыт до следующего уровня. До 50 — линейно (как было), дальше кривая круто
+// растёт: путь 70 → 100 намеренно длиннее, чем весь путь 1 → 70.
+function expToNext(level) {
+  const base = level * 20 + 15;
+  return level < 50 ? base : Math.floor(base * (1 + (level - 49) * 0.05));
+}
+
+// Штраф за разрыв уровней: фарм заведомо слабых противников почти не качает.
+// Своих ≤5 уровней разницы не трогаем, дальше −3% за уровень до пола в 25%.
+function expGapMult(myLevel, foeLevel) {
+  const gap = myLevel - foeLevel;
+  return gap <= 5 ? 1 : Math.max(0.25, 1 - (gap - 5) * 0.03);
+}
 
 // Опыт за победу; возвращает список сообщений (левелапы, эволюции, новые умения)
 function grantExp(m, amount) {
   const msgs = [];
   m.exp += amount;
-  while (m.exp >= expToNext(m.level) && m.level < 70) {
+  while (m.exp >= expToNext(m.level) && m.level < LEVEL_CAP) {
     m.exp -= expToNext(m.level);
     m.level++;
     const ratio = m.hp / m.maxHp;
@@ -404,9 +479,10 @@ const _spriteCache = new Map();
 // shiny = редкая золотая вариация; back = вид со спины (без глаз);
 // palId = перекраска корпуса из MON_PALETTES — заказные братишки; выбранный
 // окрас сильнее золота шайни (заказные всегда шайни по статам)
-function speciesSprite(speciesSeed, stage, shiny, back, palId) {
+function speciesSprite(speciesSeed, stage, shiny, back, palId, mega) {
   const pal = validPalette(palId);
-  const key = speciesSeed + ':' + stage + (shiny ? ':s' : '') + (back ? ':b' : '') + (pal ? ':' + pal : '');
+  const key = speciesSeed + ':' + stage + (shiny ? ':s' : '') + (back ? ':b' : '') +
+    (pal ? ':' + pal : '') + (mega ? ':m' : '');
   if (_spriteCache.has(key)) return _spriteCache.get(key);
 
   const st = getSpecies(speciesSeed).stages[stage];
@@ -494,6 +570,44 @@ function speciesSprite(speciesSeed, stage, shiny, back, palId) {
       ctx.fillRect(ex, ey + 1, 1, 1); ctx.fillRect(size - 1 - ex, ey + 1, 1, 1);
       break;
     }
+  }
+
+  // мега-форма: тот же силуэт, но крупнее за счёт светящегося ореола и рогов
+  // над макушкой — вид узнаётся, а статус читается с одного взгляда
+  if (mega) {
+    const pad = 2, ms = size + pad * 2;
+    const mv = document.createElement('canvas');
+    mv.width = ms; mv.height = ms;
+    const mc = mv.getContext('2d');
+    mc.fillStyle = shiny ? '#fff3b0' : info.light;
+    mc.globalAlpha = 0.55;
+    for (let y = -1; y <= size; y++) {
+      for (let x = -1; x <= size; x++) {
+        if (full(x, y)) continue;
+        if (full(x - 1, y) || full(x + 1, y) || full(x, y - 1) || full(x, y + 1)) {
+          mc.fillRect(x + pad, y + pad, 1, 1);
+        }
+      }
+    }
+    mc.globalAlpha = 1;
+    mc.drawImage(cv, pad, pad);
+    let top = 0;
+    while (top < size) {
+      let any = 0;
+      for (let x = 0; x < size; x++) any += full(x, top);
+      if (any) break;
+      top++;
+    }
+    const hornX = Math.max(0, Math.floor(size * 0.22));
+    mc.fillStyle = shiny ? '#ffffff' : info.light;
+    for (let i = 0; i < 2; i++) {
+      const hy = top - 1 - i + pad;
+      if (hy < 0) break;
+      mc.fillRect(hornX - i + pad, hy, 1, 1);
+      mc.fillRect(size - 1 - hornX + i + pad, hy, 1, 1);
+    }
+    _spriteCache.set(key, mv);
+    return mv;
   }
 
   _spriteCache.set(key, cv);
