@@ -2723,24 +2723,54 @@ function mapDims() {
   return [MAP_TILES_W, MAP_TILES_H];
 }
 
+// Сортировка списка фонтанов на карте: по расстоянию (дефолт, быстрый телепорт
+// к ближайшему) или по силе — сначала непобеждённые лидеры от слабейшего к
+// сильнейшему, чтобы было видно, куда идти дальше по прогрессии, не прокликивая
+// каждый город. Побеждённые в обоих режимах отображаются, но во втором тонут вниз.
+const MAP_SORTS = [
+  { id: 'dist', label: '📍 Расстояние' },
+  { id: 'power', label: '⚔️ Сила' },
+];
+let mapSort = localStorage.getItem('mw-map-sort') || 'dist';
+
 function renderMap() {
   const [tw, th] = mapDims();
   drawMiniMap(document.getElementById('map-canvas'), tw, th, G.player.x, G.player.y);
 
-  // кнопки быстрого перемещения — все посещённые фонтаны, от ближнего к дальнему
+  const sortBar = document.getElementById('map-sort');
+  sortBar.innerHTML = '';
+  if (G.fountains.length > 1) {
+    for (const s of MAP_SORTS) {
+      const b = document.createElement('button');
+      b.textContent = s.label;
+      b.style.cssText = 'font-size:12px;padding:6px 10px;';
+      if (s.id === mapSort) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+      b.onclick = () => { mapSort = s.id; localStorage.setItem('mw-map-sort', mapSort); renderMap(); };
+      sortBar.appendChild(b);
+    }
+  }
+
+  // кнопки быстрого перемещения — все посещённые фонтаны
   const travel = document.getElementById('map-travel');
   travel.innerHTML = G.fountains.length ? '' : '<span style="opacity:.6;font-size:12px">Коснись фонтана в городе, чтобы открыть телепорт к нему.</span>';
-  const sorted = G.fountains
-    .map(f => ({ f, dist: Math.hypot(f.x - G.player.x, f.y - G.player.y) }))
-    .sort((a, b) => a.dist - b.dist);
-  for (const { f, dist } of sorted) {
-    const b = document.createElement('button');
-    // в каждом городе ровно один фонтан — подписываем именем города, 1 км = 10 тайлов
+  const entries = G.fountains.map(f => {
+    const dist = Math.hypot(f.x - G.player.x, f.y - G.player.y);
+    // в каждом городе ровно один фонтан; арена всегда в центре его квартала
+    // (city.x/y уже привязаны к нему) — сразу видно уровень лидера и бит ли он
     const city = World.cityInfoAt(f.x, f.y);
-    // арена всегда в центре городского квартала (city.x/y уже привязаны к нему) —
-    // сразу видно уровень лидера и бит ли он, не тыкаясь в каждый город по очереди
     const master = city ? World.arenaMasterAt(city.x, city.y) : null;
-    const beaten = master && G.badges.includes(master.id);
+    const beaten = !!(master && G.badges.includes(master.id));
+    return { f, dist, city, master, beaten };
+  });
+  if (mapSort === 'power') {
+    entries.sort((a, b) => (a.beaten - b.beaten) ||
+      ((a.master ? a.master.level : 999) - (b.master ? b.master.level : 999)) || (a.dist - b.dist));
+  } else {
+    entries.sort((a, b) => a.dist - b.dist);
+  }
+  for (const { f, dist, city, master, beaten } of entries) {
+    const b = document.createElement('button');
+    // 1 км = 10 тайлов
     let label = '⛲ ' + (city ? city.name : 'Дикие места') + ' · ' + (dist / 10).toFixed(1) + ' км';
     if (master) label += ' · 🏅ур.' + master.level + (beaten ? ' ✅' : ' ⚔️');
     b.textContent = label;

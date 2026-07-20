@@ -4,7 +4,7 @@
 // новая версия приезжает ТОЛЬКО целиком — установкой нового SW (бамп CACHE),
 // который качает все ассеты мимо HTTP-кэша (cache:'reload'). Иначе ловим микс
 // старых и новых файлов (GH Pages кэширует по 10 мин) — уже наступали (v19).
-const CACHE = 'monsterworld-v57';
+const CACHE = 'monsterworld-v58';
 const ASSETS = [
   './', './index.html',
   './js/tg.js', './js/net.js', './js/util.js', './js/music.js', './js/data.js', './js/world.js', './js/battle.js', './js/nz.js', './js/main.js', './js/pvp.js',
