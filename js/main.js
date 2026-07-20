@@ -2642,6 +2642,20 @@ function drawMiniMap(cv, tw, th, centerX, centerY) {
       c.fillRect(tx * MAP_PX, ty * MAP_PX, MAP_PX, MAP_PX);
     }
   }
+  // Nuzlocke: границы областей (Вороной живых городов) — тёмный пунктир
+  if (typeof NZ === 'function' && NZ()) {
+    c.fillStyle = 'rgba(0,0,0,0.45)';
+    const stepz = 2;   // каждые 2 тайла — дёшево и глазу достаточно
+    for (let ty = 0; ty < th; ty += stepz) {
+      for (let tx = 0; tx < tw; tx += stepz) {
+        const wx = x0 + tx, wy = y0 + ty;
+        const z = nzZoneAt(wx, wy).id;
+        if (nzZoneAt(wx + stepz, wy).id !== z || nzZoneAt(wx, wy + stepz).id !== z) {
+          c.fillRect(tx * MAP_PX, ty * MAP_PX, MAP_PX, MAP_PX);
+        }
+      }
+    }
+  }
   // посещённые фонтаны — крупные маячки
   for (const f of G.fountains) {
     const mx = (f.x - x0) * MAP_PX, my = (f.y - y0) * MAP_PX;
@@ -2662,10 +2676,12 @@ function drawMiniMap(cv, tw, th, centerX, centerY) {
       if (!info || info.x !== ct.x || info.y !== ct.y) continue; // центр не в городе — город тут не вырос
       const mx = (ct.x - x0) * MAP_PX, my = (ct.y - y0) * MAP_PX;
       if (mx < 20 || my < 8 || mx > cv.width - 20 || my > cv.height - 4) continue;
+      const label = info.name + (typeof NZ === 'function' && NZ()
+        ? (G.nz.zones[info.id] ? ' ✔' : ' 🎯') : '');
       c.fillStyle = 'rgba(0,0,0,0.65)';
-      c.fillRect(mx - c.measureText(info.name).width / 2 - 3, my - 14, c.measureText(info.name).width + 6, 13);
+      c.fillRect(mx - c.measureText(label).width / 2 - 3, my - 14, c.measureText(label).width + 6, 13);
       c.fillStyle = '#ffd75e';
-      c.fillText(info.name, mx, my - 4);
+      c.fillText(label, mx, my - 4);
     }
   }
 
