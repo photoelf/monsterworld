@@ -2152,6 +2152,7 @@ function render() {
       drawMountSprite(ctx, spr, mx, my, sw, sh, p.dir === 'right');
     } else if (mount.kind === 'brother') {
       const wave = p.moving ? Math.round(Math.abs(Math.sin(G.clock * 9)) * 2) : 0;
+      riderWave = -wave; // подпрыгивает вместе с братаном
       const spr = monSprite(mount.mon);
       const dims = monSpriteDims(mount.mon, spr);
       const sw = dims.w, sh = dims.h;
@@ -2175,7 +2176,8 @@ function render() {
     ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
     ctx.fillRect(psx + 8 - rippleW / 2, psy + 13 + ride, rippleW, 2);
   }
-  ctx.drawImage(playerSprite, DIR_INDEX[p.dir] * 16, (p.moving ? p.frame : 0) * 16, 16, 16, psx, psy + riderWave, 16, 16);
+  // на маунте тренер сидит смирно (кадр стойки) — ехать должен маунт, а не ноги
+  ctx.drawImage(playerSprite, DIR_INDEX[p.dir] * 16, (p.moving && !mount ? p.frame : 0) * 16, 16, 16, psx, psy + riderWave, 16, 16);
 
   // ---- время суток и погода ----
   if (G.phase === 'night') {
@@ -3520,14 +3522,78 @@ function togglePartyPanel() {
 
 function toggleInventory() {
   const panel = document.getElementById('inv-panel');
-  if (G.state === 'inv') { panel.classList.add('hidden'); G.state = 'world'; return; }
+  if (G.state === 'inv') { closeInventory(); return; }
   if (G.state !== 'world') return;
   G.state = 'inv';
+  _invPick = null;
   renderInventory();
   panel.classList.remove('hidden');
 }
 
+// закрываем и после применения предмета — иначе тосты не видно под оверлеем
+function closeInventory() {
+  document.getElementById('inv-panel').classList.add('hidden');
+  G.state = 'world';
+}
+
 let _invCat = 'potions'; // активная вкладка (та же навигация, что в лавке)
+let _invPick = null;     // id зелья, для которого выбираем братишку-цель
+
+// Почему зелье нельзя применить на этого братишку (null — можно)
+function invBlockReason(itemId, m) {
+  if (itemId === 'tonic') return m.status ? null : 'нет недуга';
+  if (itemId === 'ether') return m.moves.some(mv => mv.pp < mv.maxPp) ? null : 'ПП полные';
+  // зелья лечения
+  if (m.hp <= 0) return 'в нокауте — неси к фонтану';
+  return m.hp < m.maxHp ? null : 'здоров';
+}
+
+function invApplyToMon(itemId, m) {
+  if (itemId === 'potion') { m.hp = Math.min(m.maxHp, m.hp + Math.ceil(m.maxHp / 2)); return '🧪 ' + monName(m) + ' восстанавливает здоровье!'; }
+  if (itemId === 'superpotion') { m.hp = m.maxHp; return '✨ ' + monName(m) + ' полностью здоров!'; }
+  if (itemId === 'tonic') { m.status = null; return '💊 Тоник снимает недуг с ' + monName(m) + '!'; }
+  m.moves.forEach(mv => { mv.pp = mv.maxPp; });
+  return '🔷 Эфир восполняет все умения ' + monName(m) + '!';
+}
+
+// Пикер цели: ОЗ, статус и запас ПП — видно, кому зелье нужнее
+function renderInvPicker(rows) {
+  const item = SHOP_ITEMS.find(it => it.id === _invPick);
+  const head = document.createElement('div');
+  head.style.cssText = 'font-size:13px;opacity:.9;text-align:left;';
+  head.textContent = 'Кому применить «' + item.name + '»?';
+  rows.appendChild(head);
+  const back = document.createElement('button');
+  back.textContent = '‹ Назад';
+  back.onclick = () => { _invPick = null; renderInventory(); };
+  rows.appendChild(back);
+  G.party.forEach(m => {
+    const ppSum = m.moves.reduce((a, mv) => a + mv.pp, 0);
+    const ppMax = m.moves.reduce((a, mv) => a + mv.maxPp, 0);
+    const ppNote = ppSum === 0 ? ' · <b style="color:var(--ui-hp-low)">нет ПП!</b>'
+      : ppSum < ppMax * 0.35 ? ' · <span style="color:var(--ui-accent)">мало ПП (' + ppSum + '/' + ppMax + ')</span>'
+      : ' · ПП ' + ppSum + '/' + ppMax;
+    const why = invBlockReason(_invPick, m);
+    const b = document.createElement('button');
+    b.style.textAlign = 'left';
+    b.innerHTML = (m.shiny ? '✨' : '') + monName(m) + ' (Ур.' + m.level + ')' + statusTag(m) +
+      '<br><span style="font-size:12px;opacity:.85">' +
+      (m.hp <= 0 ? '<b style="color:var(--ui-hp-low)">0</b>' : m.hp) + '/' + m.maxHp + ' ОЗ' + ppNote +
+      (why ? ' · <span style="opacity:.7">' + why + '</span>' : '') + '</span>';
+    b.disabled = !!why;
+    b.onclick = () => {
+      if (!G.bag[_invPick]) return;
+      G.bag[_invPick]--;
+      const msg = invApplyToMon(_invPick, m);
+      sfx('heal');
+      closeInventory();
+      toast(msg);
+      updateHUD();
+      saveGame();
+    };
+    rows.appendChild(b);
+  });
+}
 
 function renderInventory() {
   const count = it => it.id.startsWith('ball_') ? G.balls[it.id.slice(5)]
@@ -3543,11 +3609,12 @@ function renderInventory() {
     b.textContent = label;
     b.style.cssText = 'font-size:12px;padding:6px 10px;';
     if (cat === _invCat) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
-    b.onclick = () => { _invCat = cat; renderInventory(); };
+    b.onclick = () => { _invCat = cat; _invPick = null; renderInventory(); };
     tabs.appendChild(b);
   }
   const rows = document.getElementById('inv-rows');
   rows.innerHTML = '';
+  if (_invPick) { renderInvPicker(rows); return; }
   const items = SHOP_ITEMS.filter(it => it.cat === _invCat && count(it) > 0);
   if (!items.length) {
     rows.innerHTML = '<span style="opacity:.6">В этой категории пусто — загляни в лавку в городе.</span>';
@@ -3562,7 +3629,7 @@ function renderInventory() {
       (it.id === 'rod' ? '✔' : '<b style="color:var(--ui-accent)">' + count(it) + '</b>') +
       '<br><span style="opacity:.8">' + it.desc + '</span>';
     row.appendChild(info);
-    // репеллент применяется прямо отсюда
+    // репеллент действует сразу, зелья спрашивают цель
     if (REPEL_STEPS[it.id]) {
       const use = document.createElement('button');
       use.textContent = 'Применить';
@@ -3572,9 +3639,15 @@ function renderInventory() {
         G.bag[it.id]--;
         G.repelSteps = REPEL_STEPS[it.id];
         sfx('pickup');
+        closeInventory();
         toast('🚫 Дикие отгоняются ' + G.repelSteps + ' шагов — счётчик виден вверху.');
-        renderInventory(); updateHUD(); saveGame();
+        updateHUD(); saveGame();
       };
+      row.appendChild(use);
+    } else if (['potion', 'superpotion', 'tonic', 'ether'].includes(it.id)) {
+      const use = document.createElement('button');
+      use.textContent = 'Применить';
+      use.onclick = () => { _invPick = it.id; renderInventory(); };
       row.appendChild(use);
     }
     rows.appendChild(row);
