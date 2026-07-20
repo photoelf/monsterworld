@@ -1,5 +1,9 @@
 'use strict';
 
+// Защита от повторного бампа в то же здание/тренера сразу после выхода
+// (неточный джойстик на мобиле легко засасывает обратно) — общий кулдаун на любой бамп.
+const BUMP_COOLDOWN = 2.5;
+
 // ===== Глобальное состояние =====
 
 const G = {
@@ -1017,7 +1021,7 @@ function afterBattle(result) {
       (lost > 0 ? ' 💸 Потеряно ' + lost + '₴.' : ''));
   }
   G.graceSteps = 3;
-  G.bumpCooldown = 0.8;
+  G.bumpCooldown = BUMP_COOLDOWN;
   G.state = 'world';
   updateHUD();
   saveGame();
@@ -2121,7 +2125,7 @@ function step(dt) {
     // реакция на "бамп"
     if (hit && G.bumpCooldown <= 0) {
       if (hit.kind === 'trainer') {
-        G.bumpCooldown = 1;
+        G.bumpCooldown = BUMP_COOLDOWN;
         if (NZ()) {
           const resolved = resolveTrainerBattle(hit.trainer);
           if (nzConfirmBattle(resolved.name, resolved.team)) startTrainerBattle(hit.trainer, resolved);
@@ -2132,12 +2136,12 @@ function step(dt) {
       }
       if (hit.kind === 'trader') {
         // NZ сюда не попадёт: World.traderAt возвращает null при NZ() — обменники не спавнятся вовсе
-        G.bumpCooldown = 1.2;
+        G.bumpCooldown = BUMP_COOLDOWN;
         openTrade(hit.trader);
         return;
       }
       if (hit.kind === 'master') {
-        G.bumpCooldown = 1.2;
+        G.bumpCooldown = BUMP_COOLDOWN;
         if (G.badges.includes(hit.master.id)) {
           toast(hit.master.name + ': «Ты уже чемпион этой арены!»');
         } else if (NZ()) {
@@ -2149,27 +2153,27 @@ function step(dt) {
       }
       const bumpTile = World.tileAt(hit.tx, hit.ty);
       if (bumpTile === T.FOUNTAIN) {
-        G.bumpCooldown = 1.2;
+        G.bumpCooldown = BUMP_COOLDOWN;
         healAtFountain(hit.tx, hit.ty);
       } else if (bumpTile === T.SHOP) {
-        G.bumpCooldown = 1.2;
+        G.bumpCooldown = BUMP_COOLDOWN;
         openShop();
       } else if (bumpTile === T.TOWER) {
-        G.bumpCooldown = 1.2;
+        G.bumpCooldown = BUMP_COOLDOWN;
         const tw = World.towerAt(hit.tx, hit.ty);
         if (tw && confirm('🗼 Башня испытаний! Серия боёв без лечения, каждый этаж сильнее. Войти?')) {
           startTowerRun(tw);
           return;
         }
       } else if (bumpTile === T.NURSERY) {
-        G.bumpCooldown = 1.2;
+        G.bumpCooldown = BUMP_COOLDOWN;
         if (NZ()) { toast('☠️ Nuzlocke: питомник закрыт — братва не разводится.'); return; }
         openNursery();
       } else if (bumpTile === T.BOARD) {
-        G.bumpCooldown = 1.2;
+        G.bumpCooldown = BUMP_COOLDOWN;
         openBoard(hit.tx, hit.ty);
       } else if (bumpTile === T.WATER && !canSurf()) {
-        G.bumpCooldown = 2.5;
+        G.bumpCooldown = BUMP_COOLDOWN;
         hint('surf', '🌊 Нужен водный братишка 15+ уровня, чтобы плыть.');
       }
     }
