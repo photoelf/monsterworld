@@ -437,6 +437,10 @@ function nzPostcard(title, kind, payload) {
 
 // Глава-майлстон в чат (только TMA, тумблер mw-nz-chapters, не чаще раза в 30с)
 let _nzChapterTs = 0;
+// Отправки сериализуем через общую цепочку промисов — параллельные fetch к
+// воркеру могут завершиться в другом порядке, чем инициировались, и тогда
+// открытки прилетают в чат вразнобой (наступали при массовой гибели братвы).
+let _nzChapterQueue = Promise.resolve();
 function nzChapter(title, kind, payload) {
   if (!NZ() || typeof IS_TMA === 'undefined' || !IS_TMA) return;
   try { if (localStorage.getItem('mw-nz-chapters') === '0') return; } catch (e) {}
@@ -444,8 +448,15 @@ function nzChapter(title, kind, payload) {
   _nzChapterTs = Date.now();
   let photo = null;
   try { photo = nzPostcard(title, kind, payload); } catch (e) {}
-  const tail = G.nz.log.slice(-3).map(nzLogText).join('\n\n');
-  netNzChapter('📜 ' + title + '\n\n' + tail, photo);
+  // Пересказ — ВСЁ, что случилось с прошлой отправленной главы (помечено e.rep
+  // прямо на записи лога, переживает перезапуск мини-аппа), а не последние 3 —
+  // иначе события между главами (например, серия смертей в одном бою при
+  // блэкауте) молча терялись из текста и рвали хронологию для летописи.
+  const unrep = G.nz.log.filter(e => !e.rep);
+  const tail = unrep.map(nzLogText).filter(Boolean).join('\n\n');
+  unrep.forEach(e => { e.rep = 1; });
+  const text = '📜 ' + title + '\n\n' + tail;
+  _nzChapterQueue = _nzChapterQueue.then(() => netNzChapter(text, photo));
 }
 
 // Кладбище: грейскейл-спрайты и эпитафии; сортировка и кнопки Кармана скрыты

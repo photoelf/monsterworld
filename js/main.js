@@ -1209,8 +1209,9 @@ function openGrowthMove(m, mv) {
   growthPanelShow('📜 Новое умение!');
   document.getElementById('growth-stage').appendChild(monMiniCanvas(m, 26));
   const t = TYPE_INFO[mv.type];
+  const mvPp = mv.maxPp || ppForPower(mv.power);
   const mvDesc = '«<b>' + mv.name + '</b>» <span style="color:' + t.color + '">' + t.ru +
-    '</span> · сила ' + mv.power + ' · точн. ' + mv.acc + moveEffectLabel(mv);
+    '</span> · сила ' + mv.power + ' · точн. ' + mv.acc + ' · ПП ' + mvPp + moveEffectLabel(mv);
   const txt = document.getElementById('growth-text');
   const act = document.getElementById('growth-actions');
   const whoLow = stageWord(m.stage) + ' <b style="color:var(--ui-accent)">' + monName(m) + '</b>';
@@ -1241,7 +1242,7 @@ function openGrowthMove(m, mv) {
       const info = document.createElement('div');
       info.className = 'info';
       info.innerHTML = '<span class="nm">' + old.name + '</span> — ' + TYPE_INFO[old.type].ru +
-        ' · сила ' + old.power + ' · точн. ' + old.acc + moveEffectLabel(old);
+        ' · сила ' + old.power + ' · точн. ' + old.acc + ' · ПП ' + old.pp + '/' + old.maxPp + moveEffectLabel(old);
       row.appendChild(info);
       const btn = document.createElement('button');
       btn.textContent = 'Забыть';
@@ -3149,8 +3150,10 @@ function pickTeachSlot(mon, scrollIdx) {
   }
   // все 4 слота заняты — выбираем, что забыть (сортировка тут ни к чему)
   document.getElementById('teach-sort').innerHTML = '';
+  const mvPp = mv.maxPp || ppForPower(mv.power);
   document.getElementById('teach-info').innerHTML =
-    'Какое умение <b style="color:var(--ui-accent)">' + monName(mon) + '</b> забудет ради «' + mv.name + '»?';
+    'Какое умение <b style="color:var(--ui-accent)">' + monName(mon) + '</b> забудет ради «' + mv.name +
+    '» (сила ' + mv.power + ' · ПП ' + mvPp + ')?';
   const rows = document.getElementById('teach-rows');
   rows.innerHTML = '';
   mon.moves.forEach((old, oi) => {
@@ -3159,7 +3162,7 @@ function pickTeachSlot(mon, scrollIdx) {
     const info = document.createElement('div');
     info.className = 'info';
     info.innerHTML = '<span class="nm">' + old.name + '</span> — ' + TYPE_INFO[old.type].ru + ' · сила ' + old.power +
-      moveEffectLabel(old);
+      ' · ПП ' + old.pp + '/' + old.maxPp + moveEffectLabel(old);
     row.appendChild(info);
     const btn = document.createElement('button');
     btn.textContent = 'Забыть';
@@ -4443,6 +4446,16 @@ function openMonDetail(i) {
     };
     acts.appendChild(bBox);
   }
+
+  const bDex = document.createElement('button');
+  bDex.textContent = '📖 В Братопедию';
+  bDex.onclick = () => {
+    document.getElementById('mon-panel').classList.add('hidden');
+    G.state = 'dex';
+    document.getElementById('dex-panel').classList.remove('hidden');
+    openDexCard(m.speciesSeed);
+  };
+  acts.appendChild(bDex);
 
   body.appendChild(acts);
   document.getElementById('mon-panel').classList.remove('hidden');

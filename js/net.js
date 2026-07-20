@@ -393,10 +393,12 @@ function netBuyMongen(onDone) {
   netBuyProduct('mon', cb => netMongenStatus(s => cb(s.credits > 0 || s.vip)), onDone);
 }
 
-// Nuzlocke: глава летописи со скрином в чат бота (best-effort, только TMA)
+// Nuzlocke: глава летописи со скрином в чат бота (best-effort, только TMA).
+// Промис отдаём наружу — nzChapter сериализует отправки через него, чтобы
+// главы приходили в чат строго в том порядке, в каком случились события.
 function netNzChapter(text, photoDataUrl) {
-  if (!API_BASE || !tgInitData()) return;
-  fetch(API_BASE + '/nzlog', {
+  if (!API_BASE || !tgInitData()) return Promise.resolve();
+  return fetch(API_BASE + '/nzlog', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ initData: tgInitData(), text: String(text).slice(0, 900), photo: photoDataUrl || null }),
