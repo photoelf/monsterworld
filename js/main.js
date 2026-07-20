@@ -1091,6 +1091,7 @@ function openGrowthEvolve(m) {
     recalcStats(m);
     m.hp = m.hp <= 0 ? 0 : Math.max(1, Math.round(m.maxHp * ratio));
     G.stats.evolutions++;
+    if (NZ()) nzLog('evo', { nick: monName(m), sp: m.speciesSeed, st: m.stage });
     saveGame();
     setTimeout(() => {
       txt.innerHTML = 'Невероятно! Теперь это ' + stageWord(m.stage) +
@@ -4264,6 +4265,7 @@ function initInput() {
       if (G.state === 'friend') { toggleFriendPanel(); return; }
       if (G.state === 'storage') { toggleStorage(); return; }
       if (G.state === 'guide') { closeGuide(); return; }
+      if (G.state === 'nzlog') { nzCloseLog(); return; }
       if (G.state === 'inv') { toggleInventory(); return; }
       if (G.state === 'settings') { toggleSettings(); return; }
       if (G.state === 'world') { toggleSettings(); return; }
@@ -4364,6 +4366,11 @@ function initTitle() {
     catch (e) { toast('Не вышло скопировать — выдели текст пальцем.'); }
   };
   document.getElementById('btn-nzover-restart').onclick = () => nzWipeRun();
+  document.getElementById('btn-nzlog-close').onclick = () => nzCloseLog();
+  document.getElementById('btn-nzlog-share').onclick = () => {
+    try { navigator.clipboard.writeText(nzFullStory()); toast('📋 Фанфик скопирован — неси в чат!'); }
+    catch (e) { toast('Не вышло скопировать.'); }
+  };
 
   document.getElementById('btn-import').onclick = () => {
     const code = document.getElementById('import-code').value;

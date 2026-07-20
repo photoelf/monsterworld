@@ -62,11 +62,63 @@ function nzLog(kind, data) {
   G.nz.log.push(Object.assign({ t: Date.now(), k: kind }, data || {}));
 }
 
-// Временная заглушка — заменится в Task 8 (полная летопись рана).
-function nzFullStory() { return 'Летопись пишется...'; }
+// ===== Летопись: процедурный худтекст =====
+// Вариант выбирается детерминированно по timestamp события — текст стабилен
+// между рендерами, но у разных событий разные формулировки.
+function nzPick(e, arr) { return arr[(e.t | 0) % arr.length]; }
+function nzSpName(e) { return getSpecies(e.sp >>> 0).stages[e.st | 0] ? getSpecies(e.sp >>> 0).stages[e.st | 0].name : getSpecies(e.sp >>> 0).stages[0].name; }
 
-// Временная заглушка — Task 8 заменит полноценной панелью летописи.
-function nzOpenLog() {}
+function nzLogText(e) {
+  switch (e.k) {
+    case 'start': return nzPick(e, [
+      'Ранним утром тренер вышел на улицы. Никаких запасных жизней, никаких сейвскамов — только братва и дорога.',
+      'Всё началось с обещания: каждого встречного — по имени, каждого павшего — помнить. Nuzlocke начался.',
+    ]);
+    case 'name': return e.starter
+      ? 'Первым в семью вошёл ' + nzSpName(e) + '. Нарекли: ' + e.nick + '. С него всё и началось.'
+      : nzPick(e, [
+        nzSpName(e) + ' получает имя — ' + e.nick + '. Теперь это семья.',
+        'Братва приняла новичка. Отзывается на кличку ' + e.nick + '.',
+      ]);
+    case 'meet': {
+      const who = nzSpName(e) + ' (ур.' + e.lvl + ')';
+      if (e.out === 'c') return 'В ' + e.zn + ' встретился ' + who + '. ' + nzPick(e, ['Сфера легла точно — есть пополнение!', 'Уговорили по-братски: теперь с нами.']);
+      if (e.out === 'r') return 'В ' + e.zn + ' встретился ' + who + ', но пришлось уносить ноги. Шанс области сгорел.';
+      if (e.out === 'l') return 'В ' + e.zn + ' ' + who + ' оказался сильнее всей братвы. Тяжёлый день.';
+      return 'В ' + e.zn + ' встретился ' + who + '. ' + nzPick(e, ['Не далась удача — пал в бою. Область опустела.', 'Бой был честный, но в семью он уже не войдёт.']);
+    }
+    case 'evo': return e.nick + ' ' + nzPick(e, ['вырос на глазах — эволюция!', 'заматерел: новая форма, старое сердце.']);
+    case 'leader': return nzPick(e, [
+      e.name + ' повержен! Кап поднят — братва растёт дальше.',
+      'Арена наша: ' + e.name + ' жмёт руку. Идём выше.',
+    ]);
+    case 'death': return '⚰️ ' + nzPick(e, [
+      e.nick + ' пал смертью храбрых (' + e.lvl + ' ур.). Убийца: ' + e.killer + '. Место: ' + e.place + '. Помним.',
+      'Прощай, ' + e.nick + '. ' + e.killer + ' оказался сильнее — ' + e.place + ', ур.' + e.lvl + '. Братва не забудет.',
+    ]);
+    case 'blackout': return '☠️ На этом история обрывается: пала вся братва до последнего. Полный блэкаут.';
+    default: return '';
+  }
+}
+
+function nzFullStory() {
+  const head = '📜 ЛЕТОПИСЬ БРАТВЫ · Nuzlocke\nСид мира: ' + G.seed + '\n\n';
+  return head + G.nz.log.map(nzLogText).filter(Boolean).join('\n\n');
+}
+
+function nzOpenLog() {
+  if (!NZ()) return;
+  G.state = 'nzlog';
+  document.getElementById('nzlog-text').textContent = nzFullStory();
+  document.getElementById('nzlog-panel').classList.remove('hidden');
+  const box = document.getElementById('nzlog-text');
+  box.scrollTop = box.scrollHeight;   // свежие главы снизу
+}
+
+function nzCloseLog() {
+  document.getElementById('nzlog-panel').classList.add('hidden');
+  G.state = 'world';
+}
 
 // Туч-меню в NZ: 🏆 Достижения → 📜 Летопись, 🤝 Обмен/PvP скрыт.
 // Зовётся из loadGame/newWorld при входе в мир.
