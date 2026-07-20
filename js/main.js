@@ -1193,7 +1193,10 @@ function openGrowthEvolve(m) {
     recalcStats(m);
     m.hp = m.hp <= 0 ? 0 : Math.max(1, Math.round(m.maxHp * ratio));
     G.stats.evolutions++;
-    if (NZ()) nzLog('evo', { nick: monName(m), sp: m.speciesSeed, st: m.stage });
+    if (NZ()) {
+      nzLog('evo', { nick: monName(m), sp: m.speciesSeed, st: m.stage });
+      nzChapter('Эволюция: ' + monName(m), 'evo', m);
+    }
     saveGame();
     setTimeout(() => {
       txt.innerHTML = 'Невероятно! Теперь это ' + stageWord(m.stage) +

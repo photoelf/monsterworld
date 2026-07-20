@@ -252,7 +252,7 @@ async function nzAfterWild(enc, wild, result) {
     wild.nzCaughtLvl = wild.level;
     await nzForceNick(wild);
     nzLog('name', { sp: wild.speciesSeed, nick: wild.nick });
-    if (G.nz.stats.catches === 1) nzChapter('Первая поимка рана', 'catch', wild);
+    nzChapter(G.nz.stats.catches === 1 ? 'Первая поимка рана' : 'Новый брат: ' + monName(wild), 'catch', wild);
   }
   saveGame();
 }
@@ -349,8 +349,9 @@ function nzDrawMonBig(c, m, cx, cy, box) {
 
 // «Открытка» главы: оформление зависит от события, а не только текст —
 // новый брат (крупный спрайт + искры), потеря (тот же спрайт в серости под
-// плитой), лидер (спрайт тренера + кубок), блэкаут (последний павший, если
-// есть). kind не задан → старый фоллбэк: превью живой команды.
+// плитой), лидер (спрайт тренера + кубок), эволюция (спрайт уже в новой форме
+// + стрелка вверх), блэкаут (последний павший, если есть). kind не задан →
+// старый фоллбэк: превью живой команды.
 function nzPostcard(title, kind, payload) {
   const W = 480, H = 270;
   const cv = document.createElement('canvas');
@@ -363,6 +364,7 @@ function nzPostcard(title, kind, payload) {
   else if (kind === 'death') { grad.addColorStop(0, '#2a1418'); grad.addColorStop(1, '#0d0808'); }
   else if (kind === 'leader') { grad.addColorStop(0, '#2a2010'); grad.addColorStop(1, '#141008'); }
   else if (kind === 'blackout') { grad.addColorStop(0, '#1a0a0a'); grad.addColorStop(1, '#050505'); }
+  else if (kind === 'evo') { grad.addColorStop(0, '#241a38'); grad.addColorStop(1, '#100a1c'); }
   else { grad.addColorStop(0, '#141420'); grad.addColorStop(1, '#0d0d14'); }
   c.fillStyle = grad; c.fillRect(0, 0, W, H);
 
@@ -413,6 +415,14 @@ function nzPostcard(title, kind, payload) {
     c.fillText('ПОЛНЫЙ БЛЭКАУТ', W / 2, 190);
     c.fillStyle = '#e8e8f0'; c.font = '13px monospace';
     c.fillText('Ран окончен · могил: ' + G.nz.graveyard.length, W / 2, 214);
+  } else if (kind === 'evo' && payload) {
+    const m = payload;
+    nzDrawMonBig(c, m, W / 2, 118, 128);
+    c.font = '22px sans-serif'; c.fillText('⬆️', W / 2 - 92, 68); c.fillText('✨', W / 2 + 90, 96);
+    c.fillStyle = '#c9a8ff'; c.font = 'bold 20px monospace';
+    c.fillText('⬆️ Эволюция!', W / 2, 198);
+    c.fillStyle = '#e8e8f0'; c.font = '15px monospace';
+    c.fillText(monName(m) + ' · теперь ' + stageWord(m.stage) + ' · ' + m.level + ' ур.', W / 2, 222);
   } else {
     // фоллбэк — превью живой команды (как было изначально)
     c.textAlign = 'left';
