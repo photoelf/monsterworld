@@ -381,8 +381,9 @@ const World = {
     return m;
   },
 
-  // NPC-обменник на тайле (или null)
+  // NPC-обменник на тайле (или null). В Nuzlocke обмены запрещены — не спавним вовсе.
   traderAt(x, y) {
+    if (typeof NZ === 'function' && NZ()) return null;
     const t = this.tileAt(x, y);
     if (t !== T.PARK && t !== T.PAVE) return null;
     if (hash2(x, y, this.seed ^ 0x7261) >= 0.0045) return null;

@@ -22,6 +22,7 @@ let _lastUpload = 0;
 
 // Залить свою команду (не чаще раза в 90 секунд, молча при ошибках)
 function netUploadTeam() {
+  if (typeof NZ === 'function' && NZ()) return; // NZ-команды не идут в пул/лидерборд
   if (!API_BASE || !G.party.length) return;
   const now = Date.now();
   if (now - _lastUpload < 90000) return;
@@ -390,4 +391,14 @@ function netMongenClaim(cb) {
 
 function netBuyMongen(onDone) {
   netBuyProduct('mon', cb => netMongenStatus(s => cb(s.credits > 0 || s.vip)), onDone);
+}
+
+// Nuzlocke: глава летописи со скрином в чат бота (best-effort, только TMA)
+function netNzChapter(text, photoDataUrl) {
+  if (!API_BASE || !tgInitData()) return;
+  fetch(API_BASE + '/nzlog', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ initData: tgInitData(), text: String(text).slice(0, 900), photo: photoDataUrl || null }),
+  }).catch(() => {});
 }

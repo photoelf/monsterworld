@@ -289,6 +289,30 @@ export default {
       return json({ top: lb.map(e => ({ nick: e.nick, power: e.power | 0, badges: e.badges | 0, dex: e.dex | 0 })) });
     }
 
+    // --- Nuzlocke: глава летописи в чат игрока (только TMA; KV не трогаем) ---
+    if (url.pathname === '/nzlog' && req.method === 'POST') {
+      if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
+      let body;
+      try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
+      const user = await verifyInitData(env, body.initData);
+      if (!user || !user.id) return json({ err: 'tma only' }, 403);
+      const text = String(body.text || '').slice(0, 1000);
+      const photo = typeof body.photo === 'string' ? body.photo : '';
+      try {
+        if (photo.startsWith('data:image/jpeg;base64,') && photo.length < 300000) {
+          const bin = Uint8Array.from(atob(photo.slice(photo.indexOf(',') + 1)), ch => ch.charCodeAt(0));
+          const fd = new FormData();
+          fd.append('chat_id', String(user.id));
+          fd.append('caption', text);
+          fd.append('photo', new Blob([bin], { type: 'image/jpeg' }), 'chapter.jpg');
+          await fetch('https://api.telegram.org/bot' + env.BOT_TOKEN + '/sendPhoto', { method: 'POST', body: fd });
+        } else if (text) {
+          await tgApi(env, 'sendMessage', { chat_id: user.id, text });
+        }
+      } catch (e) {}
+      return json({ ok: true });
+    }
+
     // --- случайная чужая команда ---
     if (url.pathname === '/team/random' && req.method === 'GET') {
       const not = String(url.searchParams.get('not') || '');

@@ -167,6 +167,7 @@ function pvpFinish(payload) {
 // ---------- UI ----------
 
 function pvpChallengeFlow() {
+  if (typeof NZ === 'function' && NZ()) { toast('☠️ Nuzlocke: PvP недоступен.'); return; }
   friendError('');
   const main = document.getElementById('friend-main');
   main.innerHTML = '';
@@ -233,6 +234,7 @@ function pvpAward(id, sim, mySide, foeTeam) {
 
 // Кнопка «Вызвать через Telegram»: создаём вызов на сервере и открываем share
 function pvpTgChallengeFlow() {
+  if (typeof NZ === 'function' && NZ()) { toast('☠️ Nuzlocke: PvP недоступен.'); return; }
   friendError('');
   const main = document.getElementById('friend-main');
   main.innerHTML = '';

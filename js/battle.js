@@ -404,7 +404,8 @@ const Battle = {
   updateAutoBtns() {
     const box = this.el('bt-autobox');
     if (!box) return;
-    const on = this.active && typeof autoUnlocked !== 'undefined' && autoUnlocked;
+    const on = this.active && typeof autoUnlocked !== 'undefined' && autoUnlocked &&
+               !(typeof NZ === 'function' && NZ());
     box.style.display = on ? 'flex' : 'none';
     if (!on) return;
     const bAuto = this.el('bt-auto'), bSpeed = this.el('bt-speed');
@@ -479,6 +480,11 @@ const Battle = {
     sfx('enc');
     dexSee(enemyParty[ei]);
     if (opts.envText) await this.say(opts.envText);
+    // Nuzlocke: чётко предупредить, что эта встреча ловится (в счёт лимита
+    // области или шайни) — до того, как игрок решит, ввязываться ли в бой
+    if (opts.nzCatch && opts.nzCatch.ok) {
+      await this.say('🎯 Братишка из этой области — можно попробовать поймать!');
+    }
     if (opts.kind === 'trainer') {
       await this.say(opts.trainerName + ' хочет сразиться!');
       await this.say(opts.trainerName + ' отправляет в бой ' + monName(enemyParty[ei]) + '!');
@@ -502,10 +508,14 @@ const Battle = {
       } else {
         const actions = [
           { label: 'Атака' },
-          opts.kind === 'wild'
-            ? { label: 'Поймать', small: 'сфер: ' + ballsTotal(G.balls), disabled: ballsTotal(G.balls) < 1 }
-            : { label: 'Поймать', small: 'нельзя: чужой', disabled: true },
-          { label: 'Предметы' },
+          opts.kind !== 'wild'
+            ? { label: 'Поймать', small: 'нельзя: чужой', disabled: true }
+            : (opts.nzCatch && !opts.nzCatch.ok)
+              ? { label: 'Поймать', small: '☠️ ' + opts.nzCatch.why, disabled: true }
+              : { label: 'Поймать', small: 'сфер: ' + ballsTotal(G.balls), disabled: ballsTotal(G.balls) < 1 },
+          (typeof NZ === 'function' && NZ())
+            ? { label: 'Предметы', small: '☠️ Nuzlocke: в бою нельзя', disabled: true }
+            : { label: 'Предметы' },
           { label: 'Братва' },
           { label: 'Бежать' },
         ];
@@ -718,6 +728,7 @@ const Battle = {
           // без этой ветки бой возвращал 'win' с мёртвой командой: afterBattle не
           // лечил и не телепортировал, автокач бежал дальше, а следующий бой падал
           // с TypeError (firstAlive = -1). Отключка сильнее победы.
+          if (typeof nzNoteFaint === 'function' && party[pi].hp <= 0) nzNoteFaint(party[pi], enemyParty[ei], opts);
           result = this.firstAlive(party) === -1 ? 'lose' : 'win';
           break battleLoop;
         }
@@ -725,6 +736,7 @@ const Battle = {
       if (party[pi].hp <= 0) {
         sfx('faint');
         await this.say(monName(party[pi]) + ' теряет сознание!');
+        if (typeof nzNoteFaint === 'function') nzNoteFaint(party[pi], enemyParty[ei], opts);
         const alive = this.firstAlive(party);
         if (alive === -1) {
           result = 'lose';
@@ -799,7 +811,8 @@ const Battle = {
     const box = this.el('bt-scum');
     if (!box) return;
     const on = this.active && typeof SCUM_ON !== 'undefined' && SCUM_ON &&
-               typeof scumUnlocked !== 'undefined' && scumUnlocked;
+               typeof scumUnlocked !== 'undefined' && scumUnlocked &&
+               !(typeof NZ === 'function' && NZ());
     box.style.display = on ? 'flex' : 'none';
   },
 };

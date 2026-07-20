@@ -456,7 +456,9 @@ function expGapMult(myLevel, foeLevel) {
 function grantExp(m, amount) {
   const msgs = [];
   m.exp += amount;
-  while (m.exp >= expToNext(m.level) && m.level < LEVEL_CAP) {
+  // Nuzlocke: левел-кап рана (вне режима nzCap() возвращает LEVEL_CAP)
+  const cap = typeof nzCap === 'function' ? nzCap() : LEVEL_CAP;
+  while (m.exp >= expToNext(m.level) && m.level < cap) {
     m.exp -= expToNext(m.level);
     m.level++;
     const ratio = m.hp / m.maxHp;
@@ -469,6 +471,7 @@ function grantExp(m, amount) {
       if (mv.learnLevel === m.level) queueMoveLearn(m, mv);
     }
   }
+  if (typeof NZ === 'function' && NZ() && m.level >= cap) m.exp = 0;  // сверх капа — сгорает
   return msgs;
 }
 

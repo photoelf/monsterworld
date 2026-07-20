@@ -131,7 +131,19 @@ function dexCaught(m) {
   if (m.shiny) G.dex.shiny.add(m.speciesSeed);
 }
 
-const SAVE_KEY = 'monsterworld-save-v1';
+// Два слота сейва: основной и Nuzlocke. Активный выбирается на титуле,
+// mw-slot запоминает выбор; tg.js льёт в облако чанки со своим префиксом.
+const SAVE_KEY_MAIN = 'monsterworld-save-v1';
+const SAVE_KEY_NZ = 'monsterworld-save-nz1';
+let SAVE_SLOT = (() => {
+  try { return localStorage.getItem('mw-slot') === 'nz' ? 'nz' : 'main'; } catch (e) { return 'main'; }
+})();
+let SAVE_KEY = SAVE_SLOT === 'nz' ? SAVE_KEY_NZ : SAVE_KEY_MAIN;
+function setSaveSlot(slot) {
+  SAVE_SLOT = slot === 'nz' ? 'nz' : 'main';
+  SAVE_KEY = SAVE_SLOT === 'nz' ? SAVE_KEY_NZ : SAVE_KEY_MAIN;
+  try { localStorage.setItem('mw-slot', SAVE_SLOT); } catch (e) {}
+}
 const keys = new Set();
 let canvas, ctx;
 
@@ -416,7 +428,7 @@ function updateHUD() {
   const grindBtn = document.getElementById('t-grind');
   if (grindBtn) {
     grindBtn.classList.toggle('hidden',
-      !(typeof grindUnlocked !== 'undefined' && grindUnlocked && (GRIND_ON || grindZoneAt(px, py))));
+      NZ() || !(typeof grindUnlocked !== 'undefined' && grindUnlocked && (GRIND_ON || grindZoneAt(px, py))));
   }
   s.innerHTML = '🔮 <b>' + ballsTotal(G.balls) + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
     '</b> · 🏆 <b>' + G.achievements.size + '</b> · ' + PHASE_ICON[G.phase] +
@@ -426,7 +438,10 @@ function updateHUD() {
     (G.repelSteps > 0 ? ' · 🚫 ' + G.repelSteps : '') +
     (G.quest ? ' · 📋 ' + G.quest.progress + '/' + G.quest.need : '') +
     ' · x:' + px + ' y:' + py + ' · ур. диких ~' + World.levelAt(px, py) +
-    (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() + '</span>';
+    (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() +
+    (NZ() ? (() => { const z = nzZoneAt(px, py);
+      return ' · 📍' + z.name + ' ' + nzZoneStatusLabel(z.id); })() : '') +
+    (NZ() ? ' · макс.лвл ' + nzCap() : '') + '</span>';
   const p = document.getElementById('hud-party');
   p.innerHTML = G.party.map(m => {
     const pct = Math.max(0, m.hp / m.maxHp * 100);
@@ -480,6 +495,7 @@ function dumpOwnedMon(m) {
     exp: m.exp, hp: m.hp, moves: m.moves, status: m.status || null,
     shiny: !!m.shiny, mega: !!m.mega, nick: m.nick || null, charm: m.charm || null,
     customSprite: m.customSprite || null, palette: m.palette || null,
+    nzCaughtLvl: m.nzCaughtLvl || undefined, nzBattles: m.nzBattles || undefined,
   };
 }
 
@@ -493,6 +509,7 @@ function reviveOwnedMon(md) {
     exp: md.exp, hp: md.hp, moves, status: md.status || null,
     shiny: !!md.shiny, nick: safeNick(md.nick), charm: md.charm || null,
     customSprite: validCustomSprite(md.customSprite), palette: validPalette(md.palette),
+    nzCaughtLvl: md.nzCaughtLvl | 0 || undefined, nzBattles: md.nzBattles | 0 || undefined,
   };
   // мега только у финальной стадии с MEGA_LEVEL — импортированный код не подделает
   m.mega = !!md.mega && m.stage === getSpecies(m.speciesSeed).chainLen - 1 && m.level >= MEGA_LEVEL;
@@ -542,6 +559,8 @@ function buildSaveData() {
     outfit: G.outfit,
     scootOn: G.scootOn,
     hints: G.hints,
+    nuzlocke: !!G.nuzlocke,
+    nz: G.nuzlocke ? G.nz : undefined,
   };
 }
 
@@ -572,8 +591,8 @@ function importSaveCode(code) {
   if (!data || data.seed === undefined || !Array.isArray(data.party) || !data.party.length) {
     return 'Код прочитан, но данные повреждены.';
   }
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) {}
-  return null; // успех
+  try { localStorage.setItem(data.nuzlocke ? SAVE_KEY_NZ : SAVE_KEY_MAIN, JSON.stringify(data)); } catch (e) {}
+  return { nz: !!data.nuzlocke }; // успех
 }
 
 function loadGame() {
@@ -626,8 +645,11 @@ function loadGame() {
   applyOutfit();
   G.scootOn = data.scootOn !== false;   // включён по умолчанию (если куплен)
   G.hints = data.hints || {};
+  G.nuzlocke = !!data.nuzlocke;
+  G.nz = G.nuzlocke ? nzLoadState(data.nz) : null;
   GROWTH_QUEUE.length = 0;   // очередь умений держит ссылки на старые объекты братвы
   resetFollower();
+  nzApplyMenuMode();
   return true;
 }
 
@@ -647,7 +669,7 @@ function findSpawn() {
   return { x: 0.5, y: 0.5 };
 }
 
-function newWorld(seedText) {
+function newWorld(seedText, nz) {
   G.seed = seedText ? strSeed(seedText) : (Math.random() * 4294967296) >>> 0;
   World.init(G.seed);
   G.party = [];
@@ -683,9 +705,13 @@ function newWorld(seedText) {
   G.scootOn = true;
   G.hints = {};
   GROWTH_QUEUE.length = 0;
+  G.nuzlocke = !!nz;
+  G.nz = nz ? nzFreshState() : null;
+  if (nz) nzLog('start', { seed: G.seed });
   G.spawn = findSpawn();
   G.player.x = G.spawn.x; G.player.y = G.spawn.y;
   resetFollower();
+  nzApplyMenuMode();
   showStarterPick();
 }
 
@@ -729,6 +755,7 @@ function showStarterPick() {
     div.appendChild(info);
     div.onclick = () => {
       G.party = [makeMonster(seed, 0, 5)];
+      nzOnStarter(G.party[0]);
       dexCaught(G.party[0]);
       resetFollower();
       panel.classList.add('hidden');
@@ -760,7 +787,7 @@ function waterNearby() {
 // без учёта того, нажато ли ускорение: 'scooter' | 'brother' | null
 function landMountKind() {
   if (World.tileAt(Math.floor(G.player.x), Math.floor(G.player.y)) === T.WATER) return null;
-  if (scootUnlocked && G.scootOn) return 'scooter';
+  if (!NZ() && scootUnlocked && G.scootOn) return 'scooter';
   const lead = G.party.find(m => m.hp > 0);
   if (lead && lead.stage >= 2) return 'brother';
   return null;
@@ -779,7 +806,7 @@ function activeMount() {
     return w ? { kind: 'water', mon: w, mult: 1 } : null;
   }
   if (!keys.has('Shift')) return null;  // на суше маунт только при включённом ускорении
-  if (scootUnlocked && G.scootOn) return { kind: 'scooter', mult: 1.8 };
+  if (!NZ() && scootUnlocked && G.scootOn) return { kind: 'scooter', mult: 1.8 };
   const lead = G.party.find(m => m.hp > 0);
   if (lead && lead.stage >= 2) return { kind: 'brother', mon: lead, mult: 1.5 };
   return null;
@@ -831,9 +858,10 @@ function collides(x, y) {
   return null;
 }
 
-async function startTrainerBattle(tr) {
-  if (G.state !== 'world') return;
-  G.state = 'battle';
+// Финальная команда тренера (с учётом «живого» соперника, если он выпал) —
+// общая логика для самого боя и для NZ-превью перед ним (см. nzConfirmBattle):
+// подменяться должна ровно та же команда, что покажем в подтверждении.
+function resolveTrainerBattle(tr) {
   let team = World.trainerTeam(tr);
   let name = tr.name;
   // «живой» соперник: реальная команда другого игрока (уровни подогнаны под местность)
@@ -852,6 +880,13 @@ async function startTrainerBattle(tr) {
     }).filter(Boolean);
     if (revived.length) team = revived;
   }
+  return { team, name };
+}
+
+async function startTrainerBattle(tr, resolved) {
+  if (G.state !== 'world') return;
+  G.state = 'battle';
+  const { team, name } = resolved || resolveTrainerBattle(tr);
   const result = await Battle.run({
     kind: 'trainer', enemyParty: team, trainerName: name,
     reward: 30 + tr.level * 12,
@@ -873,6 +908,12 @@ async function startArenaBattle(master) {
     G.stats.trainersBeaten++;
     questProgress('trainer');
     if (!G.badges.includes(master.id)) G.badges.push(master.id);
+    if (NZ()) {
+      G.nz.stats.leaders++;
+      nzLog('leader', { name: master.name, ace: nzAceLevel(master) });
+      nzRecalcCap(master);
+      nzChapter('Лидер повержен: ' + master.name);
+    }
   }
   afterBattle(result);
 }
@@ -902,7 +943,10 @@ async function startWildBattle(x, y, mode) {
     else if (env.rain) envText = '☔ Барабанит дождь...';
     else if (env.night) envText = '🌙 Стоит глубокая ночь...';
   }
-  const result = await Battle.run({ kind: 'wild', enemyParty: [wild], envText });
+  const nzEnc = NZ() ? nzEncounterInfo(x, y, wild) : null;
+  const result = await Battle.run({ kind: 'wild', enemyParty: [wild], envText,
+    nzCatch: nzEnc ? nzEnc.catch : null });
+  if (nzEnc) nzAfterWild(nzEnc, wild, result);
   if (mode === 'fish' && result === 'caught') questProgress('fish');
   if (mode === 'shrine' && result === 'caught') {
     G.stats.legends++;
@@ -952,6 +996,7 @@ function nearestFountain() {
 }
 
 function afterBattle(result) {
+  if (NZ() && nzAfterBattle(result)) return;   // блэкаут показал свой экран
   if (result === 'lose') {
     if (GRIND_ON) setGrind(false, true); // братва откисла — автокач стоп
     if (Battle._auto) Battle.setAuto(false); // и автобой тоже: не жечь братву заново
@@ -1055,6 +1100,7 @@ function openGrowthEvolve(m) {
     recalcStats(m);
     m.hp = m.hp <= 0 ? 0 : Math.max(1, Math.round(m.maxHp * ratio));
     G.stats.evolutions++;
+    if (NZ()) nzLog('evo', { nick: monName(m), sp: m.speciesSeed, st: m.stage });
     saveGame();
     setTimeout(() => {
       txt.innerHTML = 'Невероятно! Теперь это ' + stageWord(m.stage) +
@@ -1161,6 +1207,7 @@ function onTileEnter(tx, ty) {
   if (cityId !== G.lastCityId) {
     G.lastCityId = cityId;
     if (city) toast('🏙️ Добро пожаловать: ' + city.name + '!');
+    if (city) nzRegisterCity(city);
   }
   // климат для ачивки
   const tile0 = World.tileAt(tx, ty);
@@ -1232,6 +1279,7 @@ function onTileEnter(tx, ty) {
   if (G.repelSteps > 0) return; // репеллент: случайные дикие не лезут (святилища/гнёзда выше — их не глушит)
   let chance = ENCOUNTER_CHANCE[World.tileAt(tx, ty)];
   if (chance && G.phase === 'night') chance *= 1.3;
+  if (chance && NZ()) chance *= 0.3;   // Nuzlocke: реже случайные бои
   if (chance && Math.random() < chance && G.party.some(m => m.hp > 0)) {
     startWildBattle(tx, ty);
   }
@@ -1402,6 +1450,7 @@ function tradeFinalize(payload) {
 // ---------- UI обмена ----------
 
 function toggleFriendPanel() {
+  if (NZ()) { toast('☠️ Nuzlocke: обмены и PvP закрыты.'); return; }
   const panel = document.getElementById('friend-panel');
   if (G.state === 'friend') {
     panel.classList.add('hidden');
@@ -1669,8 +1718,21 @@ const BOX_SORTS = [
 ];
 let boxSort = localStorage.getItem('mw-box-sort') || 'date';
 let boxSortAsc = (localStorage.getItem('mw-box-sort-asc') ?? '1') === '1';
+let _nzStorageTab = 'box';
 
 function renderStorage() {
+  const tabs = document.getElementById('storage-tabs');
+  tabs.innerHTML = '';
+  if (NZ()) {
+    for (const [id, label] of [['box', '📦 Карман'], ['grave', '⚰️ Кладбище (' + G.nz.graveyard.length + ')']]) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.opacity = _nzStorageTab === id ? '1' : '.55';
+      b.onclick = () => { _nzStorageTab = id; renderStorage(); };
+      tabs.appendChild(b);
+    }
+    if (_nzStorageTab === 'grave') { nzRenderGraveyard(); return; }
+  } else { _nzStorageTab = 'box'; }
   document.getElementById('storage-info').textContent =
     G.storage.length ? 'В кармане: ' + G.storage.length + '. Отсюда можно брать в братву, для яиц и обменов.' :
     'Пусто. Сюда попадают пойманные при полной братве — и кого сам уберёшь из братвы.';
@@ -1948,6 +2010,7 @@ function grindZoneAt(tx, ty) {
 }
 
 function setGrind(v, silent) {
+  if (v && NZ()) { toast('☠️ Nuzlocke: качаться придётся руками.'); return; }
   if (v && !GRIND_ON) {
     if (typeof grindUnlocked === 'undefined' || !grindUnlocked) return;
     const zone = grindZoneAt(Math.floor(G.player.x), Math.floor(G.player.y));
@@ -2036,7 +2099,7 @@ function step(dt) {
 
   const p = G.player;
   const mount = activeMount();
-  const speed = (keys.has('Shift') ? 8.6 : 5.2) * (mount ? mount.mult : 1);  // Shift — бег, маунт — множитель
+  const speed = (keys.has('Shift') ? 8.6 : 5.2) * (mount ? mount.mult : 1) * (NZ() ? 0.5 : 1);  // Shift — бег, маунт — множитель, NZ — половинная скорость
   p.moving = !!(vx || vy);
   if (p.moving) {
     // спрайт смотрит вдоль доминирующей оси (важно для плавного джойстика)
@@ -2059,10 +2122,16 @@ function step(dt) {
     if (hit && G.bumpCooldown <= 0) {
       if (hit.kind === 'trainer') {
         G.bumpCooldown = 1;
-        startTrainerBattle(hit.trainer);
+        if (NZ()) {
+          const resolved = resolveTrainerBattle(hit.trainer);
+          if (nzConfirmBattle(resolved.name, resolved.team)) startTrainerBattle(hit.trainer, resolved);
+        } else {
+          startTrainerBattle(hit.trainer);
+        }
         return;
       }
       if (hit.kind === 'trader') {
+        // NZ сюда не попадёт: World.traderAt возвращает null при NZ() — обменники не спавнятся вовсе
         G.bumpCooldown = 1.2;
         openTrade(hit.trader);
         return;
@@ -2071,6 +2140,8 @@ function step(dt) {
         G.bumpCooldown = 1.2;
         if (G.badges.includes(hit.master.id)) {
           toast(hit.master.name + ': «Ты уже чемпион этой арены!»');
+        } else if (NZ()) {
+          if (nzConfirmBattle(hit.master.name, World.masterTeam(hit.master))) startArenaBattle(hit.master);
         } else {
           startArenaBattle(hit.master);
         }
@@ -2092,6 +2163,7 @@ function step(dt) {
         }
       } else if (bumpTile === T.NURSERY) {
         G.bumpCooldown = 1.2;
+        if (NZ()) { toast('☠️ Nuzlocke: питомник закрыт — братва не разводится.'); return; }
         openNursery();
       } else if (bumpTile === T.BOARD) {
         G.bumpCooldown = 1.2;
@@ -2392,7 +2464,7 @@ function closeShop() {
 let _shopCat = 'potions'; // активная вкладка лавки (живёт между открытиями)
 
 // Строка-витрина в категории «Особое»: name/desc/price + действие
-function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick) {
+function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick, disabled) {
   const row = document.createElement('div');
   row.className = 'srow';
   const info = document.createElement('div');
@@ -2402,17 +2474,20 @@ function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick) {
   row.appendChild(info);
   const btn = document.createElement('button');
   btn.textContent = btnText;
-  btn.onclick = onClick;
+  // вне Telegram Stars не оплатить — кнопка неактивна, чтобы не путать браузерных игроков
+  if (disabled) { btn.disabled = true; } else { btn.onclick = onClick; }
   row.appendChild(btn);
   rows.appendChild(row);
 }
 
 function renderShop() {
   document.getElementById('shop-money').textContent = 'У тебя: ' + G.money + '₴';
+  if (NZ() && _shopCat === 'donate') _shopCat = 'potions'; // премиум-витрина закрыта в NZ
   // вкладки категорий
   const tabs = document.getElementById('shop-tabs');
   tabs.innerHTML = '';
   for (const [cat, label] of SHOP_CATS) {
+    if (NZ() && cat === 'donate') continue; // ☠️ Nuzlocke: премиум-витрины скрыты
     const b = document.createElement('button');
     b.textContent = label;
     b.style.cssText = 'font-size:12px;padding:6px 10px;';
@@ -2433,37 +2508,37 @@ function renderShop() {
       sprUnlocked ? '<span style="opacity:.7">куплено</span>' : SPRITE_PRICE + '⭐', 'К братве', () => { closeShop(); togglePartyPanel(); });
     shopSpecialRow(rows, '🛴 Электросамокат', 'Премиум-маунт: гоняй по суше в 1.8× быстрее. Тумблер в настройках.',
       scootUnlocked ? '<span style="opacity:.7">куплено</span>' : SCOOT_PRICE + '⭐',
-      scootUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      scootUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (scootUnlocked) { toast('🛴 Самокат уже твой — включи в настройках.'); return; }
-        if (IS_TMA) netBuyScoot(() => { toast('🛴 Электросамокат твой! Включи в настройках.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyScoot(() => { toast('🛴 Электросамокат твой! Включи в настройках.'); renderShop(); });
+      },
+      !scootUnlocked && !IS_TMA);
     shopSpecialRow(rows, '💾 Режим сейвскамера', 'Сохраняйся и откатывайся прямо в бою — переигрывай любой удар. Навсегда.',
       scumUnlocked ? '<span style="opacity:.7">куплено</span>' : SCUM_PRICE + '⭐',
-      scumUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      scumUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (scumUnlocked) { toast('💾 Уже куплено — вкл/выкл в настройках.'); return; }
-        if (IS_TMA) netBuyScum(() => { setScum(true); toast('💾 Сейвскамер твой и включён! Кнопки 💾/⏪ — в бою.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyScum(() => { setScum(true); toast('💾 Сейвскамер твой и включён! Кнопки 💾/⏪ — в бою.'); renderShop(); });
+      },
+      !scumUnlocked && !IS_TMA);
     shopSpecialRow(rows, '⚔️ Автобой', 'Тренер сам ведёт бой: атаки по эффективности, умные подмены, ускорение ×2/×3. Навсегда.',
       autoUnlocked ? '<span style="opacity:.7">куплено</span>' : AUTO_PRICE + '⭐',
-      autoUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      autoUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (autoUnlocked) { toast('⚔️ Уже куплено — кнопки Авто и ×2 ждут в бою.'); return; }
-        if (IS_TMA) netBuyAuto(() => { toast('⚔️ Автобой твой! Кнопки Авто и ×2 — в бою.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyAuto(() => { toast('⚔️ Автобой твой! Кнопки Авто и ×2 — в бою.'); renderShop(); });
+      },
+      !autoUnlocked && !IS_TMA);
     shopSpecialRow(rows, '🏃 Автокач', 'Тренер сам бегает по дикой зоне и качает братву автобоями. Нужен Автобой. Навсегда.',
       grindUnlocked ? '<span style="opacity:.7">куплено</span>' : GRIND_PRICE + '⭐' + (autoUnlocked ? '' : ' <span style="opacity:.6">(нужен Автобой)</span>'),
-      grindUnlocked ? 'Куплено' : !autoUnlocked ? 'Нужен Автобой' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      grindUnlocked ? 'Куплено' : !autoUnlocked ? 'Нужен Автобой' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (grindUnlocked) { toast('🏃 Уже куплено — кнопка Автокач ждёт в дикой зоне.'); return; }
         if (!autoUnlocked) { toast('🏃 Автокач идёт бандлом к Автобою — сначала купи ⚔️ Автобой.'); return; }
-        if (IS_TMA) netBuyGrind(() => { toast('🏃 Автокач твой! Кнопка появится в дикой траве и на воде.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyGrind(() => { toast('🏃 Автокач твой! Кнопка появится в дикой траве и на воде.'); renderShop(); });
+      },
+      !grindUnlocked && !IS_TMA);
     return;
   }
 
@@ -2583,6 +2658,20 @@ function drawMiniMap(cv, tw, th, centerX, centerY) {
       c.fillRect(tx * MAP_PX, ty * MAP_PX, MAP_PX, MAP_PX);
     }
   }
+  // Nuzlocke: границы областей (Вороной живых городов) — тёмный пунктир
+  if (typeof NZ === 'function' && NZ()) {
+    c.fillStyle = 'rgba(0,0,0,0.45)';
+    const stepz = 2;   // каждые 2 тайла — дёшево и глазу достаточно
+    for (let ty = 0; ty < th; ty += stepz) {
+      for (let tx = 0; tx < tw; tx += stepz) {
+        const wx = x0 + tx, wy = y0 + ty;
+        const z = nzZoneAt(wx, wy).id;
+        if (nzZoneAt(wx + stepz, wy).id !== z || nzZoneAt(wx, wy + stepz).id !== z) {
+          c.fillRect(tx * MAP_PX, ty * MAP_PX, MAP_PX, MAP_PX);
+        }
+      }
+    }
+  }
   // посещённые фонтаны — крупные маячки
   for (const f of G.fountains) {
     const mx = (f.x - x0) * MAP_PX, my = (f.y - y0) * MAP_PX;
@@ -2603,10 +2692,12 @@ function drawMiniMap(cv, tw, th, centerX, centerY) {
       if (!info || info.x !== ct.x || info.y !== ct.y) continue; // центр не в городе — город тут не вырос
       const mx = (ct.x - x0) * MAP_PX, my = (ct.y - y0) * MAP_PX;
       if (mx < 20 || my < 8 || mx > cv.width - 20 || my > cv.height - 4) continue;
+      const label = info.name + (typeof NZ === 'function' && NZ()
+        ? ' ' + nzZoneStatusLabel(info.id) : '');
       c.fillStyle = 'rgba(0,0,0,0.65)';
-      c.fillRect(mx - c.measureText(info.name).width / 2 - 3, my - 14, c.measureText(info.name).width + 6, 13);
+      c.fillRect(mx - c.measureText(label).width / 2 - 3, my - 14, c.measureText(label).width + 6, 13);
       c.fillStyle = '#ffd75e';
-      c.fillText(info.name, mx, my - 4);
+      c.fillText(label, mx, my - 4);
     }
   }
 
@@ -2953,6 +3044,7 @@ function closeTeach() {
 let _achTab = 'ach';
 
 function toggleAchievements() {
+  if (NZ()) { nzOpenLog(); return; }
   const panel = document.getElementById('ach-panel');
   if (G.state === 'ach') {
     panel.classList.add('hidden');
@@ -3079,6 +3171,23 @@ function guideTypeRows() {
   }).join('');
 }
 
+// Полный свод правил Nuzlocke — первым разделом гайда, только когда режим включён
+function nzGuideRulesSection() {
+  return { id: 'nzrules', ic: '☠️', title: 'Правила Nuzlocke', html:
+    '<p>Это отдельный, хардкорный ран. Правила жёсткие и без исключений:</p>' +
+    '<p>• <b>Пермасмерть</b>: боец с 0 ОЗ после боя гибнет навсегда и уходит на ⚰️ Кладбище (вкладка в Кармане). Воскрешений нет нигде — ни у фонтана, ни зельями.<br>' +
+    '• <b>Правило встречи</b>: в каждой «области» (окрестности одного города) ловятся только <b>первые ' + NZ_ZONE_CATCHES + ' встреченных</b> диких братишки — любой исход боя тратит слот области, счётчик виден в HUD и на карте. Дубль уже пойманной эво-линии встречей не считается (жди новый вид, слот не тратится), а ✨шайни можно ловить всегда, даже когда лимит области исчерпан.<br>' +
+    '• <b>Клички обязательны</b> — каждый пойманный получает имя, без права пропустить.<br>' +
+    '• <b>Предметы в бою запрещены</b> — лечиться и применять зелья можно только вне боя; в бою доступны лишь атаки и сферы ловли.<br>' +
+    '• <b>Левел-кап</b> стартует с 15 и растёт только победами над лидерами арен — до уровня туза слабейшего непобеждённого лидера среди открытых городов. Опыт сверх капа сгорает.<br>' +
+    '• <b>Скорость передвижения ×0.5</b> и <b>шанс случайных встреч ×0.3</b> — реже влетаешь в ненужные драки.<br>' +
+    '• <b>Обменников на карте нет вовсе</b>, обмены и PvP закрыты.<br>' +
+    '• <b>Blackout</b>: если вся братва и весь карман погибли — ран окончен навсегда, без переигровки; игра покажет летопись и статистику похода.</p>' +
+    '<p><b>Отключено полностью</b>: сейвскам, автобой, автокач, самокат, генератор заказных братишек, обмены, PvP, питомник, достижения и лидерборд — премиум-бонусы за звёзды тут не работают.</p>' +
+    '<p><b>Работает и остаётся бесплатным</b>: живые соперники (тренеры с командами реальных игроков), башня, мегаэволюция, лавка (кроме звёздных витрин) — и «🖼 Свой спрайт», который в Nuzlocke открыт всем без покупки, для большей привязанности к братве.</p>' +
+    '<p>📜 Всё путешествие само складывается в <b>Летопись</b> — открой её вместо Достижений (кнопка в тач-меню или клавиша O). Она же уходит финальным текстом на экран итогов после блэкаута.</p>' };
+}
+
 function renderGuide() {
   const secs = [
     { id: 'battle', ic: '⚔️', title: 'Бой и урон', html:
@@ -3127,11 +3236,15 @@ function renderGuide() {
       '<p>🗼 Башня — серия боёв без лечения между этажами; каждый третий этаж даёт свиток. После 90 уровня это главное место кача. Потолок уровня — ' + LEVEL_CAP + '.</p>' +
       '<p>💠 Мегаэволюция: братану финальной стадии с ' + MEGA_LEVEL + ' уровня скорми мега-камень (лавка) — навсегда +35% ко всем статам и новый облик.</p>' },
   ];
+  // Nuzlocke: полные правила — первым разделом; питомник (разведение отключено) — убираем
+  const shownSecs = NZ()
+    ? [nzGuideRulesSection(), ...secs.filter(s => s.id !== 'nursery')]
+    : secs;
   const chips = document.getElementById('guide-chips');
   const body = document.getElementById('guide-body');
   chips.innerHTML = '';
   body.innerHTML = '';
-  for (const s of secs) {
+  for (const s of shownSecs) {
     const sec = document.createElement('div');
     sec.innerHTML = '<h2>' + s.ic + ' ' + s.title + '</h2>' + s.html;
     body.appendChild(sec);
@@ -3196,7 +3309,7 @@ function renderSettings() {
   }
   // режим сейвскамера — тумблер только у купивших (покупка в лавке, «Особое»)
   const scumBtn = document.getElementById('set-scum');
-  if (scumUnlocked) {
+  if (scumUnlocked && !NZ()) {
     scumBtn.style.display = '';
     scumBtn.textContent = SCUM_ON ? '💾 Сейвскам: вкл' : '💾 Сейвскам: выкл';
     scumBtn.onclick = () => { setScum(!SCUM_ON); renderSettings(); };
@@ -3206,12 +3319,27 @@ function renderSettings() {
 
   // тумблер электросамоката — только у купивших
   const scootBtn = document.getElementById('set-scooter');
-  if (scootUnlocked) {
+  if (scootUnlocked && !NZ()) {
     scootBtn.style.display = '';
     scootBtn.textContent = G.scootOn ? '🛴 Самокат: вкл' : '🛴 Самокат: выкл';
     scootBtn.onclick = () => { G.scootOn = !G.scootOn; saveGame(); updateHUD(); renderSettings(); };
   } else {
     scootBtn.style.display = 'none';
+  }
+
+  // тумблер глав летописи в чат бота — только в NZ и в Telegram (нужен BOT_TOKEN/чат)
+  const nzChapBtn = document.getElementById('set-nzchapters');
+  if (NZ() && IS_TMA) {
+    nzChapBtn.style.display = '';
+    let nzChapOn = true;
+    try { nzChapOn = localStorage.getItem('mw-nz-chapters') !== '0'; } catch (e) {}
+    nzChapBtn.textContent = nzChapOn ? '📖 Главы в чат: вкл' : '📖 Главы в чат: выкл';
+    nzChapBtn.onclick = () => {
+      try { localStorage.setItem('mw-nz-chapters', nzChapOn ? '0' : '1'); } catch (e) {}
+      renderSettings();
+    };
+  } else {
+    nzChapBtn.style.display = 'none';
   }
   const urlForce = /[?&](desktop|mobile)/.test(location.search);
   const note = document.getElementById('set-mode-note');
@@ -3364,20 +3492,25 @@ function renderAccShop() {
 
   const buyEl = document.getElementById('shop-buy');
   buyEl.innerHTML = '';
-  if (_shopSel && !accsOwned.has(_shopSel)) {
+  if (_shopSel && !accsOwned.has(_shopSel) && IS_TMA) {
     const k = _shopSel, plainName = OUTFIT_ACCS[k].name.replace(/^\S+ /, '');
     const bb = document.createElement('button');
     bb.textContent = '⭐ Купить «' + plainName + '» за ' + ACC_PRICES[k] + '⭐';
     bb.onclick = () => {
-      if (IS_TMA) netBuyAcc(k, () => {
+      netBuyAcc(k, () => {
         toast('⭐ «' + plainName + '» твоя навсегда!');
         G.outfit[SLOT_FIELD[accSlot(k)]] = k; // купленное надевается сразу
         applyOutfit(); saveGame();
         if (G.state === 'accshop') renderAccShop();
       });
-      else toast('Аксессуары покупаются в Telegram: @poketmons_bot');
     };
     buyEl.appendChild(bb);
+  } else if (_shopSel && !accsOwned.has(_shopSel)) {
+    // вне Telegram Stars не оплатить — кнопки нет, только примерка
+    const d = document.createElement('div');
+    d.style.cssText = 'font-size:12px;opacity:.6;';
+    d.textContent = '🔒 Покупка — в Telegram-версии игры. Примерка выше бесплатна.';
+    buyEl.appendChild(d);
   } else {
     const d = document.createElement('div');
     d.style.cssText = 'font-size:12px;opacity:.6;';
@@ -3512,8 +3645,8 @@ function renderMongenBuy(status) {
       netMongenStatus(s => renderMongenBuy(s));
     });
   } else {
-    makeBtn.textContent = 'Покупка — в Telegram: @poketmons_bot';
-    makeBtn.onclick = () => toast('Открой игру в Telegram, чтобы купить.');
+    makeBtn.textContent = '🔒 Покупка — в Telegram-версии игры';
+    makeBtn.disabled = true;
   }
   box.appendChild(makeBtn);
 }
@@ -3937,7 +4070,8 @@ function openMonDetail(i) {
 
   // кастомный спрайт: загрузка своего PNG (платная разблокировка за Stars)
   const bSpr = document.createElement('button');
-  bSpr.textContent = sprUnlocked
+  const sprOk = sprUnlocked || NZ();
+  bSpr.textContent = sprOk
     ? (m.customSprite ? '🖼 Сменить спрайт' : '🖼 Свой спрайт')
     : '🔒 Свой спрайт · ' + SPRITE_PRICE + '⭐';
   bSpr.onclick = () => {
@@ -3946,7 +4080,7 @@ function openMonDetail(i) {
     const box = document.createElement('div');
     box.id = 'spr-hint';
     box.style.cssText = 'width:100%;background:var(--ui-panel);border:2px solid var(--ui-border);border-radius:6px;padding:10px;font-size:12px;line-height:1.5;display:flex;flex-direction:column;gap:8px;';
-    if (!sprUnlocked) {
+    if (!sprOk) {
       // витрина покупки
       box.innerHTML = '<b style="color:var(--ui-accent)">🖼 Свои спрайты братвы</b>' +
         '<br>Загружай собственные PNG-облики для любых своих братишек — навсегда, на все устройства с этим сейвом.';
@@ -4205,6 +4339,7 @@ function initInput() {
       if (G.state === 'friend') { toggleFriendPanel(); return; }
       if (G.state === 'storage') { toggleStorage(); return; }
       if (G.state === 'guide') { closeGuide(); return; }
+      if (G.state === 'nzlog') { nzCloseLog(); return; }
       if (G.state === 'inv') { toggleInventory(); return; }
       if (G.state === 'settings') { toggleSettings(); return; }
       if (G.state === 'world') { toggleSettings(); return; }
@@ -4223,15 +4358,35 @@ function initInput() {
 
 function initTitle() {
   const hasSave = (() => {
-    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.party && d.party.length; }
+    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY_MAIN)); return d && d.party && d.party.length; }
     catch (e) { return false; }
   })();
   if (hasSave) document.getElementById('btn-continue').classList.remove('hidden');
+  const hasNzSave = (() => {
+    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY_NZ)); return d && d.party && d.party.length; }
+    catch (e) { return false; }
+  })();
+  if (hasNzSave) document.getElementById('btn-continue-nz').classList.remove('hidden');
+  document.getElementById('nz-check').onchange = e =>
+    document.getElementById('nz-rules').classList.toggle('hidden', !e.target.checked);
+  document.getElementById('btn-continue-nz').onclick = () => {
+    setSaveSlot('nz');
+    if (loadGame()) {
+      document.getElementById('title').classList.add('hidden');
+      if (NZ() && G.nz.over) { nzGameOver(); return; }   // ран уже мёртв — экран итогов (Task 5)
+      G.state = 'world';
+      updateHUD();
+      toast('☠️ Nuzlocke продолжается. Береги братву.');
+    }
+  };
 
   document.getElementById('btn-new').onclick = () => {
-    newWorld(document.getElementById('seed-input').value.trim());
+    const nz = document.getElementById('nz-check').checked;
+    setSaveSlot(nz ? 'nz' : 'main');
+    newWorld(document.getElementById('seed-input').value.trim(), nz);
   };
   document.getElementById('btn-continue').onclick = () => {
+    setSaveSlot('main');
     if (loadGame()) {
       document.getElementById('title').classList.add('hidden');
       G.state = 'world';
@@ -4279,13 +4434,26 @@ function initTitle() {
     try { navigator.clipboard.writeText(ta.value); } catch (e) { document.execCommand('copy'); }
     toast('Код скопирован!');
   };
+  document.getElementById('btn-nzover-share').onclick = () => {
+    const t = document.getElementById('nzover-text').textContent;
+    try { navigator.clipboard.writeText(t); toast('📋 Летопись скопирована!'); }
+    catch (e) { toast('Не вышло скопировать — выдели текст пальцем.'); }
+  };
+  document.getElementById('btn-nzover-restart').onclick = () => nzWipeRun();
+  document.getElementById('btn-nzlog-close').onclick = () => nzCloseLog();
+  document.getElementById('btn-nzlog-share').onclick = () => {
+    try { navigator.clipboard.writeText(nzFullStory()); toast('📋 Фанфик скопирован — неси в чат!'); }
+    catch (e) { toast('Не вышло скопировать.'); }
+  };
+
   document.getElementById('btn-import').onclick = () => {
     const code = document.getElementById('import-code').value;
-    const err = importSaveCode(code);
-    if (err) {
-      document.getElementById('import-error').textContent = err;
+    const r = importSaveCode(code);
+    if (typeof r === 'string') {
+      document.getElementById('import-error').textContent = r;
       return;
     }
+    setSaveSlot(r.nz ? 'nz' : 'main');
     if (loadGame()) {
       document.getElementById('title').classList.add('hidden');
       G.state = 'world';
@@ -4365,7 +4533,7 @@ function initTouch() {
   document.getElementById('t-fish').addEventListener('pointerdown', e => { e.preventDefault(); tryFishing(); });
   document.getElementById('t-grind').addEventListener('pointerdown', e => { e.preventDefault(); setGrind(!GRIND_ON); });
   // меню-кнопки
-  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, inv: toggleInventory, settings: toggleSettings };
+  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, nzlog: nzOpenLog, friend: toggleFriendPanel, inv: toggleInventory, settings: toggleSettings };
   document.querySelectorAll('#touch-menu .tbtn').forEach(btn => {
     btn.addEventListener('pointerdown', e => { e.preventDefault(); panelFns[btn.dataset.panel](); });
   });

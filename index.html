@@ -435,9 +435,21 @@
     <h1 id="title-logo">КАРМАННАЯ<br>БРАТВА</h1>
     <div id="title-nick"></div>
     <button id="btn-continue" class="hidden">Продолжить</button>
+    <button id="btn-continue-nz" class="hidden">☠️ Продолжить Nuzlocke</button>
     <div class="title-row">
       <button id="btn-new">Новый мир</button>
       <input type="text" id="seed-input" placeholder="сид мира">
+    </div>
+    <label style="font-size:14px;display:flex;gap:6px;align-items:center;cursor:pointer;">
+      <input type="checkbox" id="nz-check"> ☠️ Режим Nuzlocke
+    </label>
+    <div id="nz-rules" class="hidden" style="font-size:12px;opacity:.85;max-width:min(420px,92vw);text-align:left;line-height:1.5;border:1px solid var(--ui-border);border-radius:6px;padding:8px 10px;">
+      Жёсткие правила: <b>пермасмерть</b>!;
+      вся братва пала — <b>ран окончен без права переигровки</b> или загрузки;
+      лечиться и пользоваться предметами прямо в бою нельзя (только сферы ловли и амулеты);
+      в каждой области можно поймать только <b>первых 4</b> встреченных братишек (дубли и добивания не в счёт, ✨шайни ловится всегда);
+      <b>Бонусы, купленные за звёзды, тут не работают</b>
+      Подробный свод правил — в Гайде (кнопка ❓ / клавиша H).
     </div>
     <div class="title-row">
       <button id="btn-import">Импорт сейва</button>
@@ -624,6 +636,7 @@
       <button id="set-guide">❓ Гайд по игре</button>
       <button id="set-scum" style="display:none;">💾 Сейвскам: выкл</button>
       <button id="set-scooter" style="display:none;">🛴 Самокат: вкл</button>
+      <button id="set-nzchapters" style="display:none;">📖 Главы в чат: вкл</button>
     </div>
     <button id="btn-settings-close">Закрыть (Esc)</button>
   </div>
@@ -712,8 +725,28 @@
     <h1 style="font-size:20px;">📦 Карман</h1>
     <button id="btn-storage-close" class="close-top">Закрыть (B)</button>
     <div id="storage-info" style="opacity:.85;"></div>
+    <div id="storage-tabs" style="display:flex;gap:6px;justify-content:center;"></div>
     <div id="storage-sort" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;max-width:min(560px,94vw);"></div>
     <div id="storage-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px;"></div>
+  </div>
+
+  <!-- Nuzlocke: конец рана -->
+  <div id="nzover-panel" class="overlay hidden">
+    <h1 style="font-size:22px;">☠️ Ран окончен</h1>
+    <div id="nzover-stats" style="opacity:.9;"></div>
+    <div id="nzover-text" style="max-height:44vh;overflow-y:auto;white-space:pre-wrap;text-align:left;font-size:13px;line-height:1.55;border:1px solid var(--ui-border);border-radius:6px;padding:10px;width:min(560px,94vw);"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;">
+      <button id="btn-nzover-share">📋 Скопировать летопись</button>
+      <button id="btn-nzover-restart">💀 Начать новый ран</button>
+    </div>
+  </div>
+
+  <!-- Nuzlocke: летопись рана -->
+  <div id="nzlog-panel" class="overlay hidden">
+    <h1 style="font-size:22px;">📜 Летопись Братвы</h1>
+    <button id="btn-nzlog-close" class="close-top">Закрыть (Esc)</button>
+    <div id="nzlog-text" style="max-height:56vh;overflow-y:auto;white-space:pre-wrap;text-align:left;font-size:13px;line-height:1.55;border:1px solid var(--ui-border);border-radius:6px;padding:10px;width:min(560px,94vw);"></div>
+    <button id="btn-nzlog-share">📋 Скопировать фанфик</button>
   </div>
 
   <!-- Тач-управление -->
@@ -743,6 +776,7 @@
 <script src="js/data.js"></script>
 <script src="js/world.js"></script>
 <script src="js/battle.js"></script>
+<script src="js/nz.js"></script>
 <script src="js/main.js"></script>
 <script src="js/pvp.js"></script>
 </body>
