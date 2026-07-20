@@ -22,6 +22,7 @@ let _lastUpload = 0;
 
 // Залить свою команду (не чаще раза в 90 секунд, молча при ошибках)
 function netUploadTeam() {
+  if (typeof NZ === 'function' && NZ()) return; // NZ-команды не идут в пул/лидерборд
   if (!API_BASE || !G.party.length) return;
   const now = Date.now();
   if (now - _lastUpload < 90000) return;

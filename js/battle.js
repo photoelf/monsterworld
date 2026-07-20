@@ -404,7 +404,8 @@ const Battle = {
   updateAutoBtns() {
     const box = this.el('bt-autobox');
     if (!box) return;
-    const on = this.active && typeof autoUnlocked !== 'undefined' && autoUnlocked;
+    const on = this.active && typeof autoUnlocked !== 'undefined' && autoUnlocked &&
+               !(typeof NZ === 'function' && NZ());
     box.style.display = on ? 'flex' : 'none';
     if (!on) return;
     const bAuto = this.el('bt-auto'), bSpeed = this.el('bt-speed');
@@ -507,7 +508,9 @@ const Battle = {
             : (opts.nzCatch && !opts.nzCatch.ok)
               ? { label: 'Поймать', small: '☠️ ' + opts.nzCatch.why, disabled: true }
               : { label: 'Поймать', small: 'сфер: ' + ballsTotal(G.balls), disabled: ballsTotal(G.balls) < 1 },
-          { label: 'Предметы' },
+          (typeof NZ === 'function' && NZ())
+            ? { label: 'Предметы', small: '☠️ Nuzlocke: в бою нельзя', disabled: true }
+            : { label: 'Предметы' },
           { label: 'Братва' },
           { label: 'Бежать' },
         ];
@@ -803,7 +806,8 @@ const Battle = {
     const box = this.el('bt-scum');
     if (!box) return;
     const on = this.active && typeof SCUM_ON !== 'undefined' && SCUM_ON &&
-               typeof scumUnlocked !== 'undefined' && scumUnlocked;
+               typeof scumUnlocked !== 'undefined' && scumUnlocked &&
+               !(typeof NZ === 'function' && NZ());
     box.style.display = on ? 'flex' : 'none';
   },
 };

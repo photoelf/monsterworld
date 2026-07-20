@@ -65,6 +65,26 @@ function nzLog(kind, data) {
 // Временная заглушка — заменится в Task 8 (полная летопись рана).
 function nzFullStory() { return 'Летопись пишется...'; }
 
+// Временная заглушка — Task 8 заменит полноценной панелью летописи.
+function nzOpenLog() {}
+
+// Туч-меню в NZ: 🏆 Достижения → 📜 Летопись, 🤝 Обмен/PvP скрыт.
+// Зовётся из loadGame/newWorld при входе в мир.
+function nzApplyMenuMode() {
+  const ach = document.querySelector('#touch-menu .tbtn[data-panel="ach"], #touch-menu .tbtn[data-panel="nzlog"]');
+  const friend = document.querySelector('#touch-menu .tbtn[data-panel="friend"]');
+  if (!ach || !friend) return;
+  if (NZ()) {
+    ach.dataset.panel = 'nzlog';
+    ach.textContent = '📜';
+    friend.classList.add('hidden');
+  } else {
+    ach.dataset.panel = 'ach';
+    ach.textContent = '🏆';
+    friend.classList.remove('hidden');
+  }
+}
+
 // Блэкаут: вся братва и карман мертвы. Ран завершён навсегда.
 function nzGameOver() {
   G.nz.over = true;

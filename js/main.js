@@ -428,7 +428,7 @@ function updateHUD() {
   const grindBtn = document.getElementById('t-grind');
   if (grindBtn) {
     grindBtn.classList.toggle('hidden',
-      !(typeof grindUnlocked !== 'undefined' && grindUnlocked && (GRIND_ON || grindZoneAt(px, py))));
+      NZ() || !(typeof grindUnlocked !== 'undefined' && grindUnlocked && (GRIND_ON || grindZoneAt(px, py))));
   }
   s.innerHTML = '🔮 <b>' + ballsTotal(G.balls) + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
     '</b> · 🏆 <b>' + G.achievements.size + '</b> · ' + PHASE_ICON[G.phase] +
@@ -649,6 +649,7 @@ function loadGame() {
   G.nz = G.nuzlocke ? nzLoadState(data.nz) : null;
   GROWTH_QUEUE.length = 0;   // очередь умений держит ссылки на старые объекты братвы
   resetFollower();
+  nzApplyMenuMode();
   return true;
 }
 
@@ -710,6 +711,7 @@ function newWorld(seedText, nz) {
   G.spawn = findSpawn();
   G.player.x = G.spawn.x; G.player.y = G.spawn.y;
   resetFollower();
+  nzApplyMenuMode();
   showStarterPick();
 }
 
@@ -1438,6 +1440,7 @@ function tradeFinalize(payload) {
 // ---------- UI обмена ----------
 
 function toggleFriendPanel() {
+  if (NZ()) { toast('☠️ Nuzlocke: обмены и PvP закрыты.'); return; }
   const panel = document.getElementById('friend-panel');
   if (G.state === 'friend') {
     panel.classList.add('hidden');
@@ -1997,6 +2000,7 @@ function grindZoneAt(tx, ty) {
 }
 
 function setGrind(v, silent) {
+  if (v && NZ()) { toast('☠️ Nuzlocke: качаться придётся руками.'); return; }
   if (v && !GRIND_ON) {
     if (typeof grindUnlocked === 'undefined' || !grindUnlocked) return;
     const zone = grindZoneAt(Math.floor(G.player.x), Math.floor(G.player.y));
@@ -2113,6 +2117,7 @@ function step(dt) {
       }
       if (hit.kind === 'trader') {
         G.bumpCooldown = 1.2;
+        if (NZ()) { toast('☠️ Nuzlocke: обмены запрещены — своя ноша ближе.'); return; }
         openTrade(hit.trader);
         return;
       }
@@ -2141,6 +2146,7 @@ function step(dt) {
         }
       } else if (bumpTile === T.NURSERY) {
         G.bumpCooldown = 1.2;
+        if (NZ()) { toast('☠️ Nuzlocke: питомник закрыт — братва не разводится.'); return; }
         openNursery();
       } else if (bumpTile === T.BOARD) {
         G.bumpCooldown = 1.2;
@@ -2458,10 +2464,12 @@ function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick) {
 
 function renderShop() {
   document.getElementById('shop-money').textContent = 'У тебя: ' + G.money + '₴';
+  if (NZ() && _shopCat === 'donate') _shopCat = 'potions'; // премиум-витрина закрыта в NZ
   // вкладки категорий
   const tabs = document.getElementById('shop-tabs');
   tabs.innerHTML = '';
   for (const [cat, label] of SHOP_CATS) {
+    if (NZ() && cat === 'donate') continue; // ☠️ Nuzlocke: премиум-витрины скрыты
     const b = document.createElement('button');
     b.textContent = label;
     b.style.cssText = 'font-size:12px;padding:6px 10px;';
@@ -3002,6 +3010,7 @@ function closeTeach() {
 let _achTab = 'ach';
 
 function toggleAchievements() {
+  if (NZ()) { nzOpenLog(); return; }
   const panel = document.getElementById('ach-panel');
   if (G.state === 'ach') {
     panel.classList.add('hidden');
@@ -3245,7 +3254,7 @@ function renderSettings() {
   }
   // режим сейвскамера — тумблер только у купивших (покупка в лавке, «Особое»)
   const scumBtn = document.getElementById('set-scum');
-  if (scumUnlocked) {
+  if (scumUnlocked && !NZ()) {
     scumBtn.style.display = '';
     scumBtn.textContent = SCUM_ON ? '💾 Сейвскам: вкл' : '💾 Сейвскам: выкл';
     scumBtn.onclick = () => { setScum(!SCUM_ON); renderSettings(); };
@@ -3255,7 +3264,7 @@ function renderSettings() {
 
   // тумблер электросамоката — только у купивших
   const scootBtn = document.getElementById('set-scooter');
-  if (scootUnlocked) {
+  if (scootUnlocked && !NZ()) {
     scootBtn.style.display = '';
     scootBtn.textContent = G.scootOn ? '🛴 Самокат: вкл' : '🛴 Самокат: выкл';
     scootBtn.onclick = () => { G.scootOn = !G.scootOn; saveGame(); updateHUD(); renderSettings(); };
@@ -3986,7 +3995,8 @@ function openMonDetail(i) {
 
   // кастомный спрайт: загрузка своего PNG (платная разблокировка за Stars)
   const bSpr = document.createElement('button');
-  bSpr.textContent = sprUnlocked
+  const sprOk = sprUnlocked || NZ();
+  bSpr.textContent = sprOk
     ? (m.customSprite ? '🖼 Сменить спрайт' : '🖼 Свой спрайт')
     : '🔒 Свой спрайт · ' + SPRITE_PRICE + '⭐';
   bSpr.onclick = () => {
@@ -3995,7 +4005,7 @@ function openMonDetail(i) {
     const box = document.createElement('div');
     box.id = 'spr-hint';
     box.style.cssText = 'width:100%;background:var(--ui-panel);border:2px solid var(--ui-border);border-radius:6px;padding:10px;font-size:12px;line-height:1.5;display:flex;flex-direction:column;gap:8px;';
-    if (!sprUnlocked) {
+    if (!sprOk) {
       // витрина покупки
       box.innerHTML = '<b style="color:var(--ui-accent)">🖼 Свои спрайты братвы</b>' +
         '<br>Загружай собственные PNG-облики для любых своих братишек — навсегда, на все устройства с этим сейвом.';
@@ -4442,7 +4452,7 @@ function initTouch() {
   document.getElementById('t-fish').addEventListener('pointerdown', e => { e.preventDefault(); tryFishing(); });
   document.getElementById('t-grind').addEventListener('pointerdown', e => { e.preventDefault(); setGrind(!GRIND_ON); });
   // меню-кнопки
-  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, inv: toggleInventory, settings: toggleSettings };
+  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, nzlog: nzOpenLog, friend: toggleFriendPanel, inv: toggleInventory, settings: toggleSettings };
   document.querySelectorAll('#touch-menu .tbtn').forEach(btn => {
     btn.addEventListener('pointerdown', e => { e.preventDefault(); panelFns[btn.dataset.panel](); });
   });
