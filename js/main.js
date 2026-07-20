@@ -10,7 +10,7 @@ const G = {
   party: [],
   balls: { basic: 15, strong: 0, bro: 0, master: 0 },  // сферы ловли по типам (BALL_TYPES)
   money: 300,
-  bag: { potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0, megastone: 0 },
+  bag: { potion: 1, superpotion: 0, tonic: 0, ether: 0, repel: 0, bigrepel: 0, rod: 0, stone: 0, megastone: 0 },
   scrolls: [],           // свитки умений (объекты умений)
   charms: { atk: 0, def: 0, spd: 0, hp: 0, exp: 0 },  // амулеты в сумке
   egg: null,             // яйцо из питомника: {speciesSeed, shiny, steps, inherit, from}
@@ -40,6 +40,7 @@ const G = {
   lastTileKey: '',
   lastCityId: null,      // город, в котором стоим (для приветствия при входе)
   graceSteps: 0,         // шаги без встреч после боя
+  repelSteps: 0,         // действие репеллента: шагов без случайных диких
   bumpCooldown: 0,
 };
 
@@ -422,6 +423,7 @@ function updateHUD() {
     (G.weather === 'rain' ? (World.climateAt(px, py) === 'cold' ? '❄️' : '☔') : '') + '<br>' +
     '<span style="opacity:.7">📕 ' + G.dex.caught.size + '/' + G.dex.seen.size +
     (G.egg ? ' · 🥚 ' + G.egg.steps : '') +
+    (G.repelSteps > 0 ? ' · 🚫 ' + G.repelSteps : '') +
     (G.quest ? ' · 📋 ' + G.quest.progress + '/' + G.quest.need : '') +
     ' · x:' + px + ' y:' + py + ' · ур. диких ~' + World.levelAt(px, py) +
     (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() + '</span>';
@@ -526,6 +528,7 @@ function buildSaveData() {
     egg: G.egg,
     quest: G.quest,
     lastQuestKind: G.lastQuestKind,
+    repelSteps: G.repelSteps,
     tradeOut: G.tradeOut,
     tradeIn: G.tradeIn,
     usedTrades: [...G.usedTrades],
@@ -585,12 +588,13 @@ function loadGame() {
   G.balls = Object.assign(emptyBalls(), data.balls || {});
   if (!data.balls && data.orbs !== undefined) G.balls.basic = data.orbs | 0;
   G.money = data.money !== undefined ? data.money : 300;
-  G.bag = Object.assign({ potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0, megastone: 0 }, data.bag || {});
+  G.bag = Object.assign({ potion: 1, superpotion: 0, tonic: 0, ether: 0, repel: 0, bigrepel: 0, rod: 0, stone: 0, megastone: 0 }, data.bag || {});
   G.scrolls = (data.scrolls || []).map(mv => Object.assign({ maxPp: ppForPower(mv.power) }, mv));
   G.charms = Object.assign({ atk: 0, def: 0, spd: 0, hp: 0, exp: 0 }, data.charms || {});
   G.egg = data.egg || null;
   G.quest = data.quest || null;
   G.lastQuestKind = data.lastQuestKind || null;
+  G.repelSteps = data.repelSteps || 0;
   G.tradeOut = data.tradeOut || null;
   G.tradeIn = data.tradeIn || null;
   G.usedTrades = new Set(data.usedTrades || []);
@@ -648,12 +652,13 @@ function newWorld(seedText) {
   G.party = [];
   G.balls = Object.assign(emptyBalls(), { basic: 15 });
   G.money = 300;
-  G.bag = { potion: 1, superpotion: 0, tonic: 0, ether: 0, rod: 0, stone: 0, megastone: 0 };
+  G.bag = { potion: 1, superpotion: 0, tonic: 0, ether: 0, repel: 0, bigrepel: 0, rod: 0, stone: 0, megastone: 0 };
   G.scrolls = [];
   G.charms = { atk: 0, def: 0, spd: 0, hp: 0, exp: 0 };
   G.egg = null;
   G.quest = null;
   G.lastQuestKind = null;
+  G.repelSteps = 0;
   G.tradeOut = null;
   G.tradeIn = null;
   G.usedTrades = new Set();
@@ -1014,6 +1019,11 @@ function onTileEnter(tx, ty) {
   if (typeof grindUnlocked !== 'undefined' && grindUnlocked && !GRIND_ON && grindZoneAt(tx, ty)) {
     hint('grind', '🤖 Автокач: жми ' + (IS_MOBILE ? 'кнопку 🤖' : 'клавишу G') + ' — тренер качает братву сам.');
   }
+  // репеллент выветривается от шагов
+  if (G.repelSteps > 0) {
+    G.repelSteps--;
+    if (G.repelSteps === 0) toast('🚫 Репеллент выветрился — дикие снова наседают!');
+  }
   // яйцо зреет от шагов
   if (G.egg) {
     if (G.egg.steps > 0) {
@@ -1062,6 +1072,7 @@ function onTileEnter(tx, ty) {
   }
   // дикая встреча (ночью чаще)
   if (G.graceSteps > 0) { G.graceSteps--; return; }
+  if (G.repelSteps > 0) return; // репеллент: случайные дикие не лезут (святилища/гнёзда выше — их не глушит)
   let chance = ENCOUNTER_CHANCE[World.tileAt(tx, ty)];
   if (chance && G.phase === 'night') chance *= 1.3;
   if (chance && Math.random() < chance && G.party.some(m => m.hp > 0)) {
@@ -2124,10 +2135,12 @@ function render() {
   const cx = Math.round((p.x - camX) * TILE);   // центр игрока по x
   const groundY = Math.round((p.y - camY) * TILE);
 
+  let riderWave = 0; // на волнах тренер качается вместе с маунтом
   if (mount) {
     if (mount.kind === 'water') {
       // покачивание на волнах + расходящиеся круги
       const wave = Math.round(Math.sin(G.clock * 3) * 1.5);
+      riderWave = wave;
       const spr = monSprite(mount.mon);
       const dims = monSpriteDims(mount.mon, spr);
       const sw = dims.w, sh = dims.h;
@@ -2162,7 +2175,7 @@ function render() {
     ctx.fillStyle = 'rgba(200, 230, 255, 0.5)';
     ctx.fillRect(psx + 8 - rippleW / 2, psy + 13 + ride, rippleW, 2);
   }
-  ctx.drawImage(playerSprite, DIR_INDEX[p.dir] * 16, (p.moving ? p.frame : 0) * 16, 16, 16, psx, psy, 16, 16);
+  ctx.drawImage(playerSprite, DIR_INDEX[p.dir] * 16, (p.moving ? p.frame : 0) * 16, 16, 16, psx, psy + riderWave, 16, 16);
 
   // ---- время суток и погода ----
   if (G.phase === 'night') {
@@ -2923,14 +2936,14 @@ function renderGuide() {
       '• <b>АТК</b> — сила ударов.<br>' +
       '• <b>ЗАЩ</b> — режет входящий урон.<br>' +
       '• <b>СКР</b> — кто ходит первым; ещё помогает сбежать из боя.<br>' +
-      '• <b>ПП</b> — запас применений умения. Кончились все — остаётся «Отчаянный удар» с отдачей. 🔷 Эфир восполняет всё.<br>' +
-      '• <b>Амулеты</b> из лавки дают носителю прибавку к одному стату — насколько большую, зависит от амулета.</p>' +
+      '• <b>ПП</b> — запас применений умения. Кончились все — остаётся «Отчаянный удар» с отдачей. 🔷 Эфир восполняет всё.</p>' +
       '<p>Опыт: слабые враги почти не качают — при разрыве больше 5 уровней опыт сильно режется. На высоких уровнях качайся в башне.</p>' },
     { id: 'moves', ic: '📜', title: 'Умения и их порядок', html:
       '<p>У братишки до 4 умений. В его карточке (ℹ️ в «Братве») тап по умению поднимает его выше — это тот порядок, в котором умения лежат в меню боя: любимое держи первым, чтобы не листать. На силу умений порядок не влияет.</p>' +
       '<p>Новые умения учат 📜 свитками (лавка, башня, задания) — там же в карточке.</p>' },
     { id: 'items', ic: '🎒', title: 'Предметы и сферы', html:
       '<p>Весь запас — в 🎒 Инвентаре' + keyHint('I') + '. 🧪 Зелье лечит 50% ОЗ, ✨ Суперзелье — полностью, 💊 Тоник снимает недуг, 🔷 Эфир возвращает все ПП, 🪨 Камень эво мгновенно эволюционирует, 💠 Мега-камень — для мегаэволюции.</p>' +
+      '<p>🧿 <b>Амулеты</b> вешаются на братишку и дают прибавку к одному стату — насколько большую, зависит от амулета. 🚫 <b>Репеллент</b> отпугивает случайных диких на 100 или 500 шагов — применяется из Инвентаря, счётчик тикает вверху экрана.</p>' +
       '<p>Сферы ловли: ' + BALL_TYPES.map(b => b.ic + ' ' + b.name.toLowerCase()).join(', ') + '. Шанс выше, когда у цели мало ОЗ, и ниже против высоких уровней; чем дороже сфера, тем надёжнее — 🟡 златая ловит всегда. В бою у каждой сферы показан живой процент.</p>' },
     { id: 'travel', ic: '⛲', title: 'Фонтаны и карта', html:
       '<p>Фонтан в городе бесплатно лечит всю братву, снимает недуги и восполняет ПП. Каждый фонтан, которого ты коснулся, остаётся точкой телепорта: открой карту' + keyHint('M') + ' — список отсортирован от ближнего к дальнему и листается.</p>' },
@@ -3514,33 +3527,58 @@ function toggleInventory() {
   panel.classList.remove('hidden');
 }
 
+let _invCat = 'potions'; // активная вкладка (та же навигация, что в лавке)
+
 function renderInventory() {
-  const rows = document.getElementById('inv-rows');
-  rows.innerHTML = '';
   const count = it => it.id.startsWith('ball_') ? G.balls[it.id.slice(5)]
     : it.id === 'scroll' ? G.scrolls.length
     : it.id.startsWith('charm_') ? G.charms[it.id.slice(6)]
     : G.bag[it.id] || 0;
-  let any = false;
+  // вкладки — те же категории, что в лавке (кроме премиум-витрины)
+  const tabs = document.getElementById('inv-tabs');
+  tabs.innerHTML = '';
   for (const [cat, label] of SHOP_CATS) {
-    if (cat === 'donate') continue; // премиум-витрина — не предметы
-    const items = SHOP_ITEMS.filter(it => it.cat === cat && count(it) > 0);
-    if (!items.length) continue;
-    any = true;
-    const h = document.createElement('div');
-    h.style.cssText = 'font-size:13px;opacity:.85;margin-top:6px;text-align:left;';
-    h.textContent = label + ':';
-    rows.appendChild(h);
-    for (const it of items) {
-      const row = document.createElement('div');
-      row.className = 'srow';
-      row.innerHTML = '<div class="info"><span class="nm">' + it.name + '</span> — есть ' +
-        (it.id === 'rod' ? '✔' : '<b style="color:var(--ui-accent)">' + count(it) + '</b>') +
-        '<br><span style="opacity:.8">' + it.desc + '</span></div>';
-      rows.appendChild(row);
-    }
+    if (cat === 'donate') continue;
+    const b = document.createElement('button');
+    b.textContent = label;
+    b.style.cssText = 'font-size:12px;padding:6px 10px;';
+    if (cat === _invCat) { b.style.borderColor = 'var(--ui-accent)'; b.style.color = 'var(--ui-accent)'; }
+    b.onclick = () => { _invCat = cat; renderInventory(); };
+    tabs.appendChild(b);
   }
-  if (!any) rows.innerHTML = '<span style="opacity:.6">Пусто. Загляни в лавку в городе!</span>';
+  const rows = document.getElementById('inv-rows');
+  rows.innerHTML = '';
+  const items = SHOP_ITEMS.filter(it => it.cat === _invCat && count(it) > 0);
+  if (!items.length) {
+    rows.innerHTML = '<span style="opacity:.6">В этой категории пусто — загляни в лавку в городе.</span>';
+    return;
+  }
+  for (const it of items) {
+    const row = document.createElement('div');
+    row.className = 'srow';
+    const info = document.createElement('div');
+    info.className = 'info';
+    info.innerHTML = '<span class="nm">' + it.name + '</span> — есть ' +
+      (it.id === 'rod' ? '✔' : '<b style="color:var(--ui-accent)">' + count(it) + '</b>') +
+      '<br><span style="opacity:.8">' + it.desc + '</span>';
+    row.appendChild(info);
+    // репеллент применяется прямо отсюда
+    if (REPEL_STEPS[it.id]) {
+      const use = document.createElement('button');
+      use.textContent = 'Применить';
+      use.onclick = () => {
+        if (G.repelSteps > 0) { toast('🚫 Репеллент ещё действует: осталось ' + G.repelSteps + ' шагов.'); return; }
+        if (!G.bag[it.id]) return;
+        G.bag[it.id]--;
+        G.repelSteps = REPEL_STEPS[it.id];
+        sfx('pickup');
+        toast('🚫 Дикие отгоняются ' + G.repelSteps + ' шагов — счётчик виден вверху.');
+        renderInventory(); updateHUD(); saveGame();
+      };
+      row.appendChild(use);
+    }
+    rows.appendChild(row);
+  }
 }
 
 // Компактный список: спрайт, имя, уровень, тип, эво, ОЗ — детали в модалке
