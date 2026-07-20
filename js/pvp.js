@@ -76,7 +76,7 @@ function pvpSimulate(teamAd, teamBd, seed) {
       log.push({ text: nm(att, as) + ' получает ' + rec + ' урона отдачей.' });
     }
     const st = STATUS_BY_TYPE[mv.type];
-    if (st && !def.status && def.hp > 0 && rng() < 0.2) {
+    if (st && !def.status && def.hp > 0 && rng() < STATUS_CHANCE) {
       def.status = st;
       if (st === 'sleep') def._sleep = 1 + Math.floor(rng() * 3);
       log.push({ text: nm(def, ds) + ' ' + STATUS_INFO[st].verb + '!' });

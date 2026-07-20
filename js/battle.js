@@ -283,7 +283,7 @@ const Battle = {
   async tryInflict(att, def, move) {
     const st = STATUS_BY_TYPE[move.type];
     if (!st || def.status || def.hp <= 0) return;
-    if (Math.random() >= 0.2) return;
+    if (Math.random() >= STATUS_CHANCE) return;
     def.status = st;
     if (st === 'sleep') def._sleep = 1 + Math.floor(Math.random() * 3);
     this.refresh(this._pm, this._em);
@@ -441,10 +441,11 @@ const Battle = {
 
   async grantExpFlow(mon, amount) {
     await this.say(monName(mon) + ' получает ' + amount + ' опыта!');
+    // grantExp теперь отдаёт только левелапы: эволюция и умения показываются
+    // отдельной церемонией после боя (maybeStartGrowth в main.js)
     const msgs = grantExp(mon, amount);
     for (const msg of msgs) {
-      if (msg.kind === 'level') sfx('level');
-      if (msg.kind === 'evolve') { sfx('catch'); G.stats.evolutions++; this.refresh(this._pm, this._em); }
+      sfx('level');
       await this.say(msg.text);
     }
   },
@@ -532,7 +533,8 @@ const Battle = {
             const hint = r.eff > 1 ? ' · ×2 💥' : r.eff < 1 ? ' · ×½ 🛡' : '';
             return {
               label: mv.name + ' <span style="opacity:.7">' + mv.pp + '/' + mv.maxPp + '</span>',
-              small: TYPE_INFO[mv.type].ru + ' · урон ' + r.min + '–' + r.max + ' · точн. ' + mv.acc + hint,
+              small: TYPE_INFO[mv.type].ru + ' · урон ' + r.min + '–' + r.max + ' · точн. ' + mv.acc +
+                moveEffectLabel(mv) + hint,
               disabled: mv.pp <= 0,
             };
           }), true);
@@ -701,8 +703,7 @@ const Battle = {
           const shared = Math.max(1, Math.floor(exp * 0.4 * expGapMult(party[k].level, e.level)));
           const msgs = grantExp(party[k], shared);
           for (const msg of msgs) {
-            if (msg.kind === 'level') sfx('level');
-            if (msg.kind === 'evolve') G.stats.evolutions++;
+            sfx('level');
             await this.say(msg.text);
           }
         }
@@ -782,7 +783,7 @@ const Battle = {
         }
       }
     } else if (result === 'lose') {
-      await this.say('Вся твоя братва без сил! Ты бежишь к точке старта...');
+      await this.say('Вся твоя братва без сил! Ты бежишь к фонтану, теряя половину денег...');
     }
 
     this.active = false;

@@ -626,6 +626,7 @@ function loadGame() {
   applyOutfit();
   G.scootOn = data.scootOn !== false;   // включён по умолчанию (если куплен)
   G.hints = data.hints || {};
+  GROWTH_QUEUE.length = 0;   // очередь умений держит ссылки на старые объекты братвы
   resetFollower();
   return true;
 }
@@ -681,6 +682,7 @@ function newWorld(seedText) {
   applyOutfit();
   G.scootOn = true;
   G.hints = {};
+  GROWTH_QUEUE.length = 0;
   G.spawn = findSpawn();
   G.player.x = G.spawn.x; G.player.y = G.spawn.y;
   resetFollower();
@@ -953,6 +955,9 @@ function afterBattle(result) {
   if (result === 'lose') {
     if (GRIND_ON) setGrind(false, true); // братва откисла — автокач стоп
     if (Battle._auto) Battle.setAuto(false); // и автобой тоже: не жечь братву заново
+    // цена поражения — половина всех наличных (округляем потерю вниз)
+    const lost = Math.floor(G.money / 2);
+    G.money -= lost;
     const f = nearestFountain();
     G.player.x = f ? f.x : G.spawn.x;
     G.player.y = f ? f.y : G.spawn.y;
@@ -963,7 +968,8 @@ function afterBattle(result) {
       m.moves.forEach(mv => { mv.pp = mv.maxPp; });
     }
     G.lastTileKey = '';
-    toast(f ? 'Ты приходишь в себя у знакомого фонтана.' : 'Братва отдохнула у точки старта.');
+    toast((f ? 'Ты приходишь в себя у знакомого фонтана.' : 'Братва отдохнула у точки старта.') +
+      (lost > 0 ? ' 💸 Потеряно ' + lost + '₴.' : ''));
   }
   G.graceSteps = 3;
   G.bumpCooldown = 0.8;
@@ -972,6 +978,157 @@ function afterBattle(result) {
   saveGame();
   netUploadTeam();   // актуальный состав — в общий пул соперников
   netFetchRival();   // и заранее тянем следующего «живого» тренера
+}
+
+// ===== Церемония роста: эволюция и изучение умений =====
+// Больше не происходят молча внутри grantExp. Готовность к эволюции выводится
+// из уровня (growthEvolveReady в data.js), изучение умений ждёт в GROWTH_QUEUE.
+// frame() дёргает maybeStartGrowth каждый кадр в мире — так церемония догоняет
+// игрока после боя, после PvP-опыта и даже после перезахода со старым сейвом.
+
+function maybeStartGrowth() {
+  if (G.state !== 'world' || Battle.active) return;
+  const evoMon = G.party.find(growthEvolveReady);
+  if (evoMon) { openGrowthEvolve(evoMon); return; }
+  while (GROWTH_QUEUE.length) {
+    const ev = GROWTH_QUEUE[0];
+    // братишку могли отпустить, а умение — уже изучить свитком; такие пропускаем
+    if ((!G.party.includes(ev.mon) && !G.storage.includes(ev.mon)) ||
+        ev.mon.moves.some(mv => mv.name === ev.mv.name)) { GROWTH_QUEUE.shift(); continue; }
+    GROWTH_QUEUE.shift();
+    openGrowthMove(ev.mon, ev.mv);
+    return;
+  }
+}
+
+function closeGrowth() {
+  document.getElementById('growth-panel').classList.add('hidden');
+  G.state = 'world';   // следующий кандидат из очереди откроется со следующего кадра
+  updateHUD();
+  saveGame();
+}
+
+function growthPanelShow(title) {
+  G.state = 'growth';
+  document.getElementById('growth-title').textContent = title;
+  document.getElementById('growth-stage').innerHTML = '';
+  document.getElementById('growth-text').innerHTML = '';
+  document.getElementById('growth-rows').innerHTML = '';
+  document.getElementById('growth-actions').innerHTML = '';
+  document.getElementById('growth-panel').classList.remove('hidden');
+}
+
+function growthCloseBtn() {
+  const b = document.createElement('button');
+  b.textContent = 'Закрыть';
+  b.onclick = closeGrowth;
+  return b;
+}
+
+function openGrowthEvolve(m) {
+  growthPanelShow('✨ Эволюция!');
+  const sp = getSpecies(m.speciesSeed);
+  const next = sp.stages[m.stage + 1];
+  const stage = document.getElementById('growth-stage');
+  const oldCv = monMiniCanvas(m, 26);   // 26px-канвас растянут CSS до 120 — спрайт крупный
+  // предпросмотр новой формы: monSprite читает поля экземпляра, клона хватает
+  const newCv = monMiniCanvas(Object.assign({}, m, { stage: m.stage + 1 }), 26);
+  newCv.style.opacity = '0';
+  stage.appendChild(oldCv);
+  stage.appendChild(newCv);
+  const txt = document.getElementById('growth-text');
+  txt.innerHTML = cap(stageWord(m.stage)) + ' <b style="color:var(--ui-accent)">' + monName(m) +
+    '</b> набрался опыта и готов эволюционировать в ' + stageWordAcc(m.stage + 1) + ' <b>' + next.name + '</b>!';
+  const act = document.getElementById('growth-actions');
+  const b = document.createElement('button');
+  b.textContent = '✨ Эволюционировать';
+  b.onclick = () => {
+    b.disabled = true;
+    sfx('catch');
+    oldCv.classList.add('grow-out');
+    newCv.style.opacity = '';
+    newCv.classList.add('grow-in');
+    // применяем сразу, анимация — только картинка: закрытие игры эволюцию не съест
+    const hadNick = !!m.nick;
+    const ratio = m.maxHp ? m.hp / m.maxHp : 1;
+    m.stage++;
+    recalcStats(m);
+    m.hp = m.hp <= 0 ? 0 : Math.max(1, Math.round(m.maxHp * ratio));
+    G.stats.evolutions++;
+    saveGame();
+    setTimeout(() => {
+      txt.innerHTML = 'Невероятно! Теперь это ' + stageWord(m.stage) +
+        ' <b style="color:var(--ui-accent)">' + (hadNick ? monName(m) : monSpeciesName(m)) + '</b>!';
+      act.innerHTML = '';
+      act.appendChild(growthCloseBtn());
+    }, 1500);
+  };
+  act.appendChild(b);
+}
+
+function openGrowthMove(m, mv) {
+  growthPanelShow('📜 Новое умение!');
+  document.getElementById('growth-stage').appendChild(monMiniCanvas(m, 26));
+  const t = TYPE_INFO[mv.type];
+  const mvDesc = '«<b>' + mv.name + '</b>» <span style="color:' + t.color + '">' + t.ru +
+    '</span> · сила ' + mv.power + ' · точн. ' + mv.acc + moveEffectLabel(mv);
+  const txt = document.getElementById('growth-text');
+  const act = document.getElementById('growth-actions');
+  const whoLow = stageWord(m.stage) + ' <b style="color:var(--ui-accent)">' + monName(m) + '</b>';
+  const who = cap(whoLow);
+
+  if (m.moves.length < 4) {
+    m.moves.push(moveInstance(mv));
+    sfx('level');
+    saveGame();
+    txt.innerHTML = who + ' набрался опыта и изучает умение ' + mvDesc + '!';
+    act.appendChild(growthCloseBtn());
+    return;
+  }
+
+  // все 4 слота заняты — спрашиваем, чем пожертвовать
+  txt.innerHTML = who + ' пытался изучить умение ' + mvDesc + ', но он уже и так ферзь — ' +
+    'все 4 слота заняты. Что делаем?';
+  const bSwap = document.createElement('button');
+  bSwap.textContent = 'Заменить одно из умений';
+  bSwap.onclick = () => {
+    const rows = document.getElementById('growth-rows');
+    rows.innerHTML = '';
+    act.innerHTML = '';
+    txt.innerHTML = 'Какое умение ' + whoLow + ' забудет ради ' + mvDesc + '?';
+    m.moves.forEach((old, oi) => {
+      const row = document.createElement('div');
+      row.className = 'srow';
+      const info = document.createElement('div');
+      info.className = 'info';
+      info.innerHTML = '<span class="nm">' + old.name + '</span> — ' + TYPE_INFO[old.type].ru +
+        ' · сила ' + old.power + ' · точн. ' + old.acc + moveEffectLabel(old);
+      row.appendChild(info);
+      const btn = document.createElement('button');
+      btn.textContent = 'Забыть';
+      btn.onclick = () => {
+        const oldName = old.name;
+        m.moves[oi] = moveInstance(mv);
+        sfx('level');
+        saveGame();
+        rows.innerHTML = '';
+        txt.innerHTML = who + ' забывает «' + oldName + '» и изучает «<b>' + mv.name + '</b>»!';
+        act.innerHTML = '';
+        act.appendChild(growthCloseBtn());
+      };
+      row.appendChild(btn);
+      rows.appendChild(row);
+    });
+    const back = document.createElement('button');
+    back.textContent = '‹ Назад';
+    back.onclick = () => openGrowthMove(m, mv);
+    act.appendChild(back);
+  };
+  const bSkip = document.createElement('button');
+  bSkip.textContent = 'Отменить изучение';
+  bSkip.onclick = closeGrowth;
+  act.appendChild(bSwap);
+  act.appendChild(bSkip);
 }
 
 function healAtFountain(tx, ty) {
@@ -2733,7 +2890,8 @@ function openTeach(mon) {
     const info = document.createElement('div');
     info.className = 'info';
     info.innerHTML = '<span class="nm">📜 ' + mv.name + '</span> — <span style="color:' + TYPE_INFO[mv.type].color + '">' +
-      TYPE_INFO[mv.type].ru + '</span> · сила ' + mv.power + ' · точн. ' + mv.acc + ' · ПП ' + (mv.maxPp || ppForPower(mv.power));
+      TYPE_INFO[mv.type].ru + '</span> · сила ' + mv.power + ' · точн. ' + mv.acc + ' · ПП ' + (mv.maxPp || ppForPower(mv.power)) +
+      moveEffectLabel(mv);
     row.appendChild(info);
     const btn = document.createElement('button');
     btn.textContent = 'Изучить';
@@ -2771,7 +2929,8 @@ function pickTeachSlot(mon, scrollIdx) {
     row.className = 'srow';
     const info = document.createElement('div');
     info.className = 'info';
-    info.innerHTML = '<span class="nm">' + old.name + '</span> — ' + TYPE_INFO[old.type].ru + ' · сила ' + old.power;
+    info.innerHTML = '<span class="nm">' + old.name + '</span> — ' + TYPE_INFO[old.type].ru + ' · сила ' + old.power +
+      moveEffectLabel(old);
     row.appendChild(info);
     const btn = document.createElement('button');
     btn.textContent = 'Забыть';
@@ -2929,6 +3088,8 @@ function renderGuide() {
       '• <b>Крит</b>: с шансом 6% урон ×1.5.<br>' +
       '• <b>Значки арен</b>: каждый даёт +3% к твоему урону.<br>' +
       '• <b>Погода и время</b>: в дождь вода ×1.25, а огонь ×0.8; ночью тьма ×1.2.</p>' +
+      '<p><b>Недуги</b>: стихийные умения с шансом ' + Math.round(STATUS_CHANCE * 100) + '% вешают эффект — ' +
+      '🌿 яд, 🔥 ожог, ⚡ паралич, 🔮 сон, ❄ заморозка. Какой именно и с каким шансом — подписано прямо на кнопке умения в бою.</p>' +
       '<p>Считать самому не нужно: в меню атак у каждого умения написан готовый разброс «урон 47–55» именно по текущему врагу. «Точн.» — шанс попасть.</p>' +
       '<p>Если под твоей панелью горит «⚠ стихия врага сильнее твоей» — повод сменить бойца через «Братва»: на кнопках замены видно, кто сколько врежет этому врагу.</p>' },
     { id: 'types', ic: '🌈', title: 'Стихии', html:
@@ -2948,11 +3109,18 @@ function renderGuide() {
       '<p>🧿 <b>Амулеты</b> вешаются на братишку и дают прибавку к одному стату — насколько большую, зависит от амулета. 🚫 <b>Репеллент</b> отпугивает случайных диких на 100 или 500 шагов — применяется из Инвентаря, счётчик тикает вверху экрана.</p>' +
       '<p>Сферы ловли: ' + BALL_TYPES.map(b => b.ic + ' ' + b.name.toLowerCase()).join(', ') + '. Шанс выше, когда у цели мало ОЗ, и ниже против высоких уровней; чем дороже сфера, тем надёжнее — 🟡 златая ловит всегда. В бою у каждой сферы показан живой процент.</p>' },
     { id: 'travel', ic: '⛲', title: 'Фонтаны и карта', html:
-      '<p>Фонтан в городе бесплатно лечит всю братву, снимает недуги и восполняет ПП. Каждый фонтан, которого ты коснулся, остаётся точкой телепорта: открой карту' + keyHint('M') + ' — список отсортирован от ближнего к дальнему и листается.</p>' },
+      '<p>Фонтан в городе бесплатно лечит всю братву, снимает недуги и восполняет ПП. Каждый фонтан, которого ты коснулся, остаётся точкой телепорта: открой карту' + keyHint('M') + ' — список отсортирован от ближнего к дальнему и листается.</p>' +
+      '<p>⚠ Если вся братва пала в бою, ты очнёшься у ближайшего фонтана, потеряв <b>половину наличных</b> — не ходи в опасные земли с полным карманом.</p>' },
     { id: 'nursery', ic: '🥚', title: 'Питомник', html:
       '<p>Приноси двух родителей и 500₴ — получишь яйцо. Вид малыша — случайного из родителей (50/50), плюс он унаследует одно случайное умение одного из них. Шанс ✨сияющего — 1/32, а с сияющим родителем — 1/8. Вылупится через 300 шагов прогулки.</p>' },
     { id: 'mounts', ic: '🐎', title: 'Маунты', html:
-      '<p>Зажми бег — и поедешь верхом: 🐎 первый в братве <b>братан финальной стадии</b> возит по суше ×1.5; 🛴 самокат (⭐ товар из лавки) — ×1.8. По воде тебя сам везёт 💧 водный братишка от 15 уровня. Иконка на кнопке бега подсказывает, кто повезёт.</p>' },
+      '<p>🐎 <b>Как ездить верхом на своём братане:</b><br>' +
+      '1. Чтобы замаунтить кого-то из своей братвы, нужен <b>братан 3-й эволюции</b> — докачай вид с полной цепочкой до финальной стадии (виды с 1–2 стадиями до братана не дорастают, цепочку смотри в Братопедии).<br>' +
+      '2. Поставь его <b>первым в «Братве»</b> — везёт первый живой боец команды.<br>' +
+      '3. Зажми бег' + keyHint('Shift') + ' — и ты в седле, скорость ×1.5. Отпустишь — идёшь пешком.</p>' +
+      '<p>💧 <b>Как плавать:</b> возьми в братву водного братишку <b>от 15 уровня</b> — на воде он подхватит тебя сам, жать ничего не нужно (без него в воду не зайти).</p>' +
+      '<p>🛴 <b>Самокат</b> (⭐ товар из лавки): ×1.8 по суше, тоже по кнопке бега; тумблер в настройках.</p>' +
+      '<p>Кто повезёт прямо сейчас — подсказывает иконка на кнопке бега: 🛴 самокат / 🐎 братан / 🏃 просто бег. Если доступно несколько: вода → самокат → братан.</p>' },
     { id: 'quests', ic: '📋', title: 'Задания', html:
       '<p>Доски 📋 стоят в городах. После сдачи задания доска предложит новое (и само предложение со временем меняется). Повтор того же вида подряд платит вдвое меньше — выгоднее чередовать. Награда растёт с уровнем местности, сверху — свиток или эфир.</p>' },
     { id: 'endgame', ic: '🗼', title: 'Башня и эндгейм', html:
@@ -3742,7 +3910,7 @@ function openMonDetail(i) {
     const mb = document.createElement('button');
     mb.style.textAlign = 'left';
     mb.innerHTML = (mi + 1) + '. ' + mv.name + ' <span style="color:' + TYPE_INFO[mv.type].color + '">' +
-      TYPE_INFO[mv.type].ru + '</span> · сила ' + mv.power + ' · ПП ' + mv.pp + '/' + mv.maxPp;
+      TYPE_INFO[mv.type].ru + '</span> · сила ' + mv.power + ' · ПП ' + mv.pp + '/' + mv.maxPp + moveEffectLabel(mv);
     mb.onclick = () => {
       if (mi === 0) return;
       [m.moves[mi - 1], m.moves[mi]] = [m.moves[mi], m.moves[mi - 1]];
@@ -4273,6 +4441,7 @@ function main() {
     last = now;
     if (document.body.dataset.state !== G.state) document.body.dataset.state = G.state;
     step(dt);
+    maybeStartGrowth();   // после боя/PvP-опыта: церемония эволюции/умения
     if (G.state === 'world' || G.state === 'party') render();
     requestAnimationFrame(frame);
   }

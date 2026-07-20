@@ -53,16 +53,27 @@ const STRUGGLE = { name: 'Отчаянный удар', type: 'normal', power: 3
 // ===== Статусные эффекты =====
 
 const STATUS_INFO = {
-  poison: { ru: 'ЯД',   color: '#9a4ab0', verb: 'отравлен' },
-  burn:   { ru: 'ОЖГ',  color: '#e8613c', verb: 'получает ожог' },
-  para:   { ru: 'ПРЛ',  color: '#e8c832', verb: 'парализован' },
-  sleep:  { ru: 'СОН',  color: '#8a8aa0', verb: 'засыпает' },
-  freeze: { ru: 'ЗМР',  color: '#7fd4e0', verb: 'замерзает' },
+  poison: { ru: 'ЯД',   low: 'яд',        color: '#9a4ab0', verb: 'отравлен' },
+  burn:   { ru: 'ОЖГ',  low: 'ожог',      color: '#e8613c', verb: 'получает ожог' },
+  para:   { ru: 'ПРЛ',  low: 'паралич',   color: '#e8c832', verb: 'парализован' },
+  sleep:  { ru: 'СОН',  low: 'сон',       color: '#8a8aa0', verb: 'засыпает' },
+  freeze: { ru: 'ЗМР',  low: 'заморозка', color: '#7fd4e0', verb: 'замерзает' },
 };
 // какой тип умения какой статус может наложить
 const STATUS_BY_TYPE = {
   grass: 'poison', fire: 'burn', electric: 'para', psychic: 'sleep', ice: 'freeze',
 };
+// шанс наложить статус после удара (общий для боя и PvP-симуляции)
+const STATUS_CHANCE = 0.2;
+
+// Подпись эффекта умения для меню/списков: « · сон 20%» цветом статуса.
+// Пустая строка, если тип умения статусов не вешает.
+function moveEffectLabel(mv) {
+  const st = STATUS_BY_TYPE[mv.type];
+  if (!st) return '';
+  const s = STATUS_INFO[st];
+  return ' · <span style="color:' + s.color + '">' + s.low + ' ' + Math.round(STATUS_CHANCE * 100) + '%</span>';
+}
 
 function statusTag(m) {
   if (!m.status) return '';
@@ -227,6 +238,10 @@ const SUPER_TRAINERS = ['Иван', 'Полина', 'Андрей', 'Миша'];
 // Существо по стадии эволюции: братишка → брат → братан
 function stageWord(stage) {
   return ['братишка', 'брат', 'братан'][stage] || 'братишка';
+}
+// винительный падеж: «эволюционировать в братишку/брата/братана»
+function stageWordAcc(stage) {
+  return ['братишку', 'брата', 'братана'][stage] || 'братишку';
 }
 
 // ===== Генерация умений =====
@@ -432,7 +447,12 @@ function expGapMult(myLevel, foeLevel) {
   return gap <= 5 ? 1 : Math.max(0.25, 1 - (gap - 5) * 0.03);
 }
 
-// Опыт за победу; возвращает список сообщений (левелапы, эволюции, новые умения)
+// Опыт за победу; возвращает список сообщений (только левелапы).
+// Эволюция и новые умения больше НЕ применяются молча внутри боя:
+//  - готовность к эволюции выводится из самого экземпляра (growthEvolveReady) —
+//    ей не нужен сейв-флаг, main.js покажет церемонию, когда игрок в мире;
+//  - изучение умений копится в GROWTH_QUEUE (очередь в памяти) — после боя
+//    main.js откроет диалог (изучить / заменить одно из 4 / отменить).
 function grantExp(m, amount) {
   const msgs = [];
   m.exp += amount;
@@ -443,38 +463,30 @@ function grantExp(m, amount) {
     recalcStats(m);
     m.hp = Math.max(1, Math.round(m.maxHp * ratio));
     msgs.push({ kind: 'level', text: monName(m) + ' достигает уровня ' + m.level + '!' });
-
-    const sp = getSpecies(m.speciesSeed);
-    let st = sp.stages[m.stage];
-    // эволюция
-    if (st.evolveLevel !== null && m.level >= st.evolveLevel) {
-      const oldName = st.name;
-      m.stage++;
-      recalcStats(m);
-      m.hp = Math.max(1, Math.round(m.maxHp * ratio));
-      st = sp.stages[m.stage];
-      msgs.push({ kind: 'evolve', text: 'Невероятно! ' + oldName + ' эволюционирует в ' + st.name + '!' });
-    }
-    // новые умения этой стадии
-    for (const mv of st.moves) {
-      if (mv.learnLevel === m.level) {
-        if (m.moves.length < 4) {
-          m.moves.push(moveInstance(mv));
-          msgs.push({ kind: 'move', text: monName(m) + ' изучает умение «' + mv.name + '»!' });
-        } else {
-          // заменяем самое слабое, если новое сильнее
-          let wi = 0;
-          for (let i = 1; i < 4; i++) if (m.moves[i].power < m.moves[wi].power) wi = i;
-          if (m.moves[wi].power < mv.power) {
-            const old = m.moves[wi].name;
-            m.moves[wi] = moveInstance(mv);
-            msgs.push({ kind: 'move', text: monName(m) + ' забывает «' + old + '» и изучает «' + mv.name + '»!' });
-          }
-        }
-      }
+    // умения текущей стадии — в очередь церемоний (стадия до эволюции: как в
+    // покемонах, недоэволюционировавший учит приёмы своей формы)
+    for (const mv of getSpecies(m.speciesSeed).stages[m.stage].moves) {
+      if (mv.learnLevel === m.level) queueMoveLearn(m, mv);
     }
   }
   return msgs;
+}
+
+// Очередь «братишка готов изучить умение» — живёт в памяти сессии; если игрок
+// закрыл игру до показа, событие теряется (не критично: свитки всегда есть)
+const GROWTH_QUEUE = [];
+
+function queueMoveLearn(m, mv) {
+  if (m.moves.some(x => x.name === mv.name)) return;
+  if (GROWTH_QUEUE.some(ev => ev.mon === m && ev.mv.name === mv.name)) return;
+  GROWTH_QUEUE.push({ mon: m, mv });
+}
+
+// Готов ли к эволюции: достиг evolveLevel своей стадии (переносит и закрытие
+// игры — при следующем визите в мир церемония всё равно случится)
+function growthEvolveReady(m) {
+  const st = getSpecies(m.speciesSeed).stages[m.stage];
+  return st.evolveLevel !== null && m.level >= st.evolveLevel;
 }
 
 // ===== Процедурные пиксельные спрайты =====

@@ -184,6 +184,14 @@
   @keyframes shake { 0%,100%{transform:translateX(0)} 25%{transform:translateX(-7px)} 75%{transform:translateX(7px)} }
   .flash { animation: flash .3s; }
   @keyframes flash { 0%,100%{filter:none} 50%{filter:brightness(3)} }
+  /* церемония эволюции: два канваса стопкой, старый вспыхивает и растворяется,
+     новый проявляется из вспышки (только классы — id-селекторы ломают анимации) */
+  #growth-stage { position: relative; width: 120px; height: 120px; }
+  #growth-stage canvas { position: absolute; left: 0; top: 0; width: 120px; height: 120px; image-rendering: pixelated; }
+  .grow-out { animation: grow-out 1.5s ease-in forwards; }
+  @keyframes grow-out { 0%{opacity:1;transform:scale(1);filter:none} 45%{opacity:1;transform:scale(1.15);filter:brightness(3)} 100%{opacity:0;transform:scale(1.35);filter:brightness(3)} }
+  .grow-in { animation: grow-in 1.5s ease-out forwards; }
+  @keyframes grow-in { 0%,45%{opacity:0;transform:scale(.55);filter:brightness(3)} 75%{opacity:1;transform:scale(1.08);filter:brightness(2)} 100%{opacity:1;transform:scale(1);filter:none} }
   #bt-log {
     width: 100%; max-width: 640px; min-height: 58px; background: var(--ui-panel);
     border: 2px solid var(--ui-border); border-radius: 6px;
@@ -542,6 +550,15 @@
     <div id="teach-info" style="opacity:.9;"></div>
     <div id="teach-sort" style="display:flex;flex-wrap:wrap;gap:4px;justify-content:center;"></div>
     <div id="teach-rows" style="display:flex;flex-direction:column;gap:6px;max-height:340px;overflow-y:auto;"></div>
+  </div>
+
+  <!-- Церемония роста: эволюция / изучение умения (открывается после боя) -->
+  <div id="growth-panel" class="overlay hidden" style="z-index: 60;">
+    <h1 id="growth-title" style="font-size:20px;">✨ Эволюция!</h1>
+    <div id="growth-stage"></div>
+    <div id="growth-text" style="max-width:min(460px,92vw);line-height:1.6;"></div>
+    <div id="growth-rows" style="display:flex;flex-direction:column;gap:6px;max-height:240px;overflow-y:auto;width:min(460px,94vw);"></div>
+    <div id="growth-actions" style="display:flex;gap:10px;flex-wrap:wrap;justify-content:center;"></div>
   </div>
 
   <!-- Обмен с другом -->
