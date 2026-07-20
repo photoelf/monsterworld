@@ -158,6 +158,12 @@ const Battle = {
   refresh(pm, em) {
     this.card('bt-pcard', pm);
     this.card('bt-ecard', em);
+    // матчап стихий прямым текстом: тип на карточке игроки не связывали с эффективностью
+    const foeEff = effMult(monType(em), monType(pm));
+    const myEff = effMult(monType(pm), monType(em));
+    const matchup = foeEff > 1 ? '<div style="font-size:11px;color:var(--ui-hp-low)">⚠ стихия врага сильнее твоей</div>'
+                  : myEff > 1 ? '<div style="font-size:11px;color:var(--ui-hp)">💥 твоя стихия сильнее</div>' : '';
+    if (matchup) this.el('bt-pcard').innerHTML += matchup;
     // свой: процедурный — со спины; кастомный смотрит влево — флипаем вправо, на врага
     if (pm.customSprite) this.drawSprite('bt-pcanvas', pm, true, false);
     else this.drawSprite('bt-pcanvas', pm, false, true);
@@ -212,11 +218,11 @@ const Battle = {
 
   // ---------- механика ----------
 
-  calcDamage(att, def, move, isPlayer) {
+  // Детерминированная часть урона (всё, кроме разброса и крита) — общая для
+  // реального удара и предпросмотра «урон N–M» в меню умений/замены
+  dmgBase(att, def, move, isPlayer) {
     const eff = effMult(move.type, monType(def));
     const stab = move.type === monType(att) ? 1.3 : 1;
-    const rand = 0.85 + Math.random() * 0.15;
-    const crit = Math.random() < 0.06 ? 1.5 : 1;
     const badge = isPlayer ? 1 + (G.badges ? G.badges.length : 0) * 0.03 : 1;
     // погода и время суток усиливают стихии
     let env = 1;
@@ -226,7 +232,20 @@ const Battle = {
     }
     if (G.phase === 'night' && move.type === 'shadow') env *= 1.2;
     const raw = ((2 + att.level * 0.4) * move.power * (effAtk(att) / Math.max(1, def.def))) / 42 + 2;
-    return { dmg: Math.max(1, Math.floor(raw * eff * stab * rand * crit * badge * env)), eff, crit: crit > 1 };
+    return { base: raw * eff * stab * badge * env, eff };
+  },
+
+  calcDamage(att, def, move, isPlayer) {
+    const { base, eff } = this.dmgBase(att, def, move, isPlayer);
+    const rand = 0.85 + Math.random() * 0.15;
+    const crit = Math.random() < 0.06 ? 1.5 : 1;
+    return { dmg: Math.max(1, Math.floor(base * rand * crit)), eff, crit: crit > 1 };
+  },
+
+  // Разброс урона без крита: min = ×0.85, max = ×1.0
+  dmgRange(att, def, move, isPlayer) {
+    const { base, eff } = this.dmgBase(att, def, move, isPlayer);
+    return { min: Math.max(1, Math.floor(base * 0.85)), max: Math.max(1, Math.floor(base)), eff };
   },
 
   // Может ли монстр действовать в этот ход (сон/заморозка/паралич)
@@ -396,11 +415,25 @@ const Battle = {
   },
 
   async pickSwitch(party, currentIdx, forced) {
-    const opts = party.map((m, i) => ({
-      label: monName(m) + ' (Ур.' + m.level + ')',
-      small: m.hp + '/' + m.maxHp + ' ОЗ',
-      disabled: m.hp <= 0 || i === currentIdx,
-    }));
+    const em = this._em; // текущий враг — чтобы показать, кто против него хорош
+    const opts = party.map((m, i) => {
+      const t = TYPE_INFO[monType(m)];
+      let small = m.hp + '/' + m.maxHp + ' ОЗ';
+      if (em) {
+        // лучшее умение против текущего врага (по потолку урона); без ПП — «Отчаянный удар»
+        const usable = m.moves.filter(mv => mv.pp > 0);
+        const best = (usable.length ? usable : [STRUGGLE])
+          .map(mv => this.dmgRange(m, em, mv, true))
+          .reduce((a, b) => (b.max > a.max ? b : a));
+        const hint = best.eff > 1 ? ' ×2 💥' : best.eff < 1 ? ' ×½ 🛡' : '';
+        small += ' · урон ~' + best.min + '–' + best.max + hint;
+      }
+      return {
+        label: monName(m) + ' (Ур.' + m.level + ') <span style="color:' + t.color + '">' + t.ru + '</span>',
+        small,
+        disabled: m.hp <= 0 || i === currentIdx,
+      };
+    });
     this.note(forced ? 'Кого отправить в бой?' : 'Кого выбрать?');
     return await this.menu(opts, !forced);
   },
@@ -493,11 +526,12 @@ const Battle = {
         } else {
           this.note('Какое умение?');
           const mi = await this.menu(pm.moves.map(mv => {
-            const eff = effMult(mv.type, monType(em));
-            const hint = eff > 1 ? ' · ×2 💥' : eff < 1 ? ' · ×½ 🛡' : '';
+            // вместо абстрактной «силы» — реальный разброс урона по текущему врагу
+            const r = this.dmgRange(pm, em, mv, true);
+            const hint = r.eff > 1 ? ' · ×2 💥' : r.eff < 1 ? ' · ×½ 🛡' : '';
             return {
               label: mv.name + ' <span style="opacity:.7">' + mv.pp + '/' + mv.maxPp + '</span>',
-              small: TYPE_INFO[mv.type].ru + ' · сила ' + mv.power + ' · точн. ' + mv.acc + hint,
+              small: TYPE_INFO[mv.type].ru + ' · урон ' + r.min + '–' + r.max + ' · точн. ' + mv.acc + hint,
               disabled: mv.pp <= 0,
             };
           }), true);

@@ -15,6 +15,7 @@ const G = {
   charms: { atk: 0, def: 0, spd: 0, hp: 0, exp: 0 },  // амулеты в сумке
   egg: null,             // яйцо из питомника: {speciesSeed, shiny, steps, inherit, from}
   quest: null,           // активное задание с доски
+  lastQuestKind: null,   // вид последнего сданного задания — повтор платит половину
   tradeOut: null,        // моё предложение другу: {offerId, mon} (монстрик в эскроу)
   tradeIn: null,         // мой ответ на чужое предложение: {offerId, mon, expectHash, expectMon}
   usedTrades: new Set(), // завершённые сделки и PvP-бои (id)
@@ -90,14 +91,17 @@ const ACHIEVEMENTS = [
 // Прогресс активного задания с доски
 function questProgress(kind, param) {
   const q = G.quest;
-  if (!q || q.kind !== kind) return;
-  if (kind === 'catch' && q.param !== param) return;
+  if (!q) return;
+  // «поймай любых» засчитывает любое событие ловли
+  if (q.kind !== kind && !(q.kind === 'catchany' && kind === 'catch')) return;
+  if (q.kind === 'catch' && q.param !== param) return;
   q.progress++;
   if (q.progress >= q.need) {
     G.money += q.reward;
     if (q.bonus === 'scroll') G.scrolls.push(makeMove(mulberry32((Math.random() * 4294967296) >>> 0)));
     else G.bag.ether++;
     G.stats.quests++;
+    G.lastQuestKind = q.kind; // повтор того же вида на доске платит половину
     G.quest = null;
     sfx('level');
     toast('📋 Задание выполнено! +' + q.reward + '₴ и ' + (q.bonus === 'scroll' ? 'свиток' : 'эфир') + '!');
@@ -232,7 +236,7 @@ const OUTFIT_ACCS = {
     else if (d === 'left') { r(E, 6, 1); r(E, 8, 1); }
     else if (d === 'right') { r(E, 8, 1); r(E, 10, 1); }
   } },
-  shroom: { name: '🍄 Грибная шапка', draw(r) {
+  shroom: { name: '🍄 Грибная шляпа', draw(r) {
     const R = '#d82818', W = '#f0f0f0';
     r(R, 4, 1, 8, 2); r(R, 5, 0, 6, 1);
     r(W, 5, 1, 2, 1); r(W, 9, 1, 2, 1); r(W, 7, 0, 2, 1);
@@ -508,6 +512,7 @@ function buildSaveData() {
     charms: G.charms,
     egg: G.egg,
     quest: G.quest,
+    lastQuestKind: G.lastQuestKind,
     tradeOut: G.tradeOut,
     tradeIn: G.tradeIn,
     usedTrades: [...G.usedTrades],
@@ -572,6 +577,7 @@ function loadGame() {
   G.charms = Object.assign({ atk: 0, def: 0, spd: 0, hp: 0, exp: 0 }, data.charms || {});
   G.egg = data.egg || null;
   G.quest = data.quest || null;
+  G.lastQuestKind = data.lastQuestKind || null;
   G.tradeOut = data.tradeOut || null;
   G.tradeIn = data.tradeIn || null;
   G.usedTrades = new Set(data.usedTrades || []);
@@ -634,6 +640,7 @@ function newWorld(seedText) {
   G.charms = { atk: 0, def: 0, spd: 0, hp: 0, exp: 0 };
   G.egg = null;
   G.quest = null;
+  G.lastQuestKind = null;
   G.tradeOut = null;
   G.tradeIn = null;
   G.usedTrades = new Set();
@@ -876,6 +883,7 @@ async function startWildBattle(x, y, mode) {
     else if (env.night) envText = '🌙 Стоит глубокая ночь...';
   }
   const result = await Battle.run({ kind: 'wild', enemyParty: [wild], envText });
+  if (mode === 'fish' && result === 'caught') questProgress('fish');
   if (mode === 'shrine' && result === 'caught') {
     G.stats.legends++;
     toast('⚡ Легендарный братан пойман!');
@@ -898,6 +906,7 @@ async function startTowerRun(tw) {
     if (result !== 'win') break;
     G.stats.trainersBeaten++;
     questProgress('trainer');
+    questProgress('tower');
     G.stats.towerBest = Math.max(G.stats.towerBest, floor);
     if (floor % 3 === 0) {
       const mv = makeMove(mulberry32((Math.random() * 4294967296) >>> 0), null, 10);
@@ -1576,7 +1585,11 @@ function renderNursery(picked) {
   const mons = allMons();
   const info = document.getElementById('nursery-info');
   info.innerHTML = picked.length === 0
-    ? 'Выбери <b>первого</b> родителя (500₴ за яйцо, 📦 — из кармана):'
+    ? '<div style="font-size:12px;opacity:.85;max-width:520px;line-height:1.5;margin-bottom:6px">' +
+      'Два родителя → яйцо за 500₴. Вид яйца — случайного родителя (50/50), ' +
+      'малыш наследует одно случайное умение одного из родителей. ' +
+      'Шанс ✨сияющего: 1/32, с сияющим родителем — 1/8. Вылупится через 300 шагов.</div>' +
+      'Выбери <b>первого</b> родителя (📦 — из кармана):'
     : 'Выбери <b>второго</b> родителя. Первый: <b style="color:var(--ui-accent)">' + monName(mons[picked[0]].m) + '</b>';
   const rows = document.getElementById('nursery-rows');
   rows.innerHTML = '';
@@ -1628,11 +1641,18 @@ function closeNursery() {
 
 function makeBoardOffer(boardId) {
   const tb = Math.floor(G.clock / 300); // предложение меняется каждые 5 минут
-  const rng = mulberry32(hash2u(strSeed(boardId), tb, G.seed ^ 0xB0A2D));
+  // сид включает число сданных заданий: после каждой сдачи доска предлагает НОВОЕ
+  // (раньше одно и то же «победи 2 тренеров» висело вечно и фармилось на 8к)
+  const rng = mulberry32(hash2u(strSeed(boardId), tb + G.stats.quests * 7919, G.seed ^ 0xB0A2D));
   const lvl = World.levelAt(Math.floor(G.player.x), Math.floor(G.player.y));
-  const kinds = ['catch', 'trainer', 'wild'];
+  const kinds = ['catch', 'trainer', 'wild', 'catchany', 'tower'];
+  if (G.bag.rod) kinds.push('fish'); // рыбалка — только владельцам удочки
   const kind = pick(rng, kinds);
-  const q = { kind, progress: 0, reward: 300 + lvl * 25, bonus: rng() < 0.5 ? 'scroll' : 'ether' };
+  // база ×0.6 (анти-фарм), повтор того же вида подряд — ещё ×0.5
+  let reward = Math.round((300 + lvl * 25) * 0.6);
+  const repeat = kind === G.lastQuestKind;
+  if (repeat) reward = Math.round(reward * 0.5);
+  const q = { kind, progress: 0, reward, repeat, bonus: rng() < 0.5 ? 'scroll' : 'ether' };
   if (kind === 'catch') {
     q.param = pick(rng, TYPE_LIST);
     q.need = 1;
@@ -1640,6 +1660,15 @@ function makeBoardOffer(boardId) {
   } else if (kind === 'trainer') {
     q.need = irange(rng, 2, 3);
     q.text = 'Победи ' + q.need + ' тренеров';
+  } else if (kind === 'catchany') {
+    q.need = irange(rng, 2, 3);
+    q.text = 'Поймай ' + q.need + ' любых братишек';
+  } else if (kind === 'tower') {
+    q.need = irange(rng, 3, 5);
+    q.text = 'Пройди ' + q.need + (q.need >= 5 ? ' этажей' : ' этажа') + ' башни испытаний';
+  } else if (kind === 'fish') {
+    q.need = 1;
+    q.text = 'Выуди братишку рыбалкой';
   } else {
     q.need = irange(rng, 3, 5);
     q.text = 'Выиграй ' + q.need + ' боёв с дикими';
@@ -1665,7 +1694,8 @@ function openBoard(tx, ty) {
   } else {
     const offer = makeBoardOffer('B' + Math.floor(tx / 12) + ',' + Math.floor(ty / 12));
     info.innerHTML = '📋 Объявление:<br><b>' + offer.text + '</b><br>Награда: ' + offer.reward + '₴ + ' +
-      (offer.bonus === 'scroll' ? 'свиток умения' : 'эфир');
+      (offer.bonus === 'scroll' ? 'свиток умения' : 'эфир') +
+      (offer.repeat ? '<br><span style="opacity:.65;font-size:12px">🔁 повтор прошлого вида — награда вдвое меньше</span>' : '');
     const acc = document.createElement('button');
     acc.textContent = 'Принять';
     acc.onclick = () => {
@@ -2401,18 +2431,27 @@ function renderMap() {
   const [tw, th] = mapDims();
   drawMiniMap(document.getElementById('map-canvas'), tw, th, G.player.x, G.player.y);
 
-  // кнопки быстрого перемещения
+  // кнопки быстрого перемещения — все посещённые фонтаны, от ближнего к дальнему
   const travel = document.getElementById('map-travel');
   travel.innerHTML = G.fountains.length ? '' : '<span style="opacity:.6;font-size:12px">Коснись фонтана в городе, чтобы открыть телепорт к нему.</span>';
-  for (const f of G.fountains.slice(-12)) {
+  const sorted = G.fountains
+    .map(f => ({ f, dist: Math.hypot(f.x - G.player.x, f.y - G.player.y) }))
+    .sort((a, b) => a.dist - b.dist);
+  for (const { f, dist } of sorted) {
     const b = document.createElement('button');
-    const dist = Math.hypot(f.x - G.player.x, f.y - G.player.y);
     // в каждом городе ровно один фонтан — подписываем именем города, 1 км = 10 тайлов
     const city = World.cityInfoAt(f.x, f.y);
     b.textContent = '⛲ ' + (city ? city.name : 'Дикие места') + ' · ' + (dist / 10).toFixed(1) + ' км';
     b.onclick = () => travelToFountain(f);
     travel.appendChild(b);
   }
+  // затухание снизу видно, пока список не долистан до конца;
+  // замер в rAF — renderMap зовётся ДО снятия hidden, у скрытой панели размеры нулевые
+  const wrap = document.getElementById('map-travel-wrap');
+  const fade = () => wrap.classList.toggle('has-more', travel.scrollTop + travel.clientHeight < travel.scrollHeight - 4);
+  travel.onscroll = fade;
+  travel.scrollTop = 0;
+  requestAnimationFrame(fade);
 }
 
 function travelToFountain(f) {
@@ -2805,6 +2844,90 @@ function toggleSettings() {
   G.state = 'settings';
   renderSettings();
   panel.classList.remove('hidden');
+}
+
+// ===== Гайд: разъяснение механик (по фидбеку — игрокам не хватало хелпа) =====
+
+function openGuide() {
+  if (G.state === 'settings') { document.getElementById('settings-panel').classList.add('hidden'); G.state = 'world'; }
+  if (G.state !== 'world') return;
+  G.state = 'guide';
+  renderGuide();
+  document.getElementById('guide-panel').classList.remove('hidden');
+}
+
+function closeGuide() {
+  document.getElementById('guide-panel').classList.add('hidden');
+  G.state = 'world';
+}
+
+function toggleGuide() {
+  if (G.state === 'guide') closeGuide(); else openGuide();
+}
+
+// Строки «кто кого бьёт» — из реальной таблицы эффективностей, не разойдётся с кодом
+function guideTypeRows() {
+  return TYPE_LIST.map(t => {
+    const strong = TYPE_LIST.filter(d => effMult(t, d) > 1).map(d => TYPE_INFO[d].ru).join(', ');
+    const weak = TYPE_LIST.filter(d => effMult(t, d) < 1).map(d => TYPE_INFO[d].ru).join(', ');
+    return '<div style="margin:3px 0"><b style="color:' + TYPE_INFO[t].color + '">' + TYPE_INFO[t].ru + '</b>' +
+      (strong ? ' · 💥 ×2 по: ' + strong : '') +
+      (weak ? ' · 🛡 ×½ по: ' + weak : '') + '</div>';
+  }).join('');
+}
+
+function renderGuide() {
+  const secs = [
+    { id: 'battle', ic: '⚔️', title: 'Бой и урон', html:
+      '<p>Урон складывается из уровня и АТК бойца, силы умения и ЗАЩ цели, а сверху идут множители:</p>' +
+      '<p>• <b>Стихия</b>: удачная — <b>×2 💥</b>, неудачная — <b>×½ 🛡</b>. Эти значки видны в меню атак у каждого умения — они и значат «в два раза больше» или «вполовину меньше».<br>' +
+      '• <b>Родная стихия</b>: умение того же типа, что и сам братишка, бьёт на 30% сильнее.<br>' +
+      '• <b>Крит</b>: с шансом 6% урон ×1.5.<br>' +
+      '• <b>Значки арен</b>: каждый даёт +3% к твоему урону.<br>' +
+      '• <b>Погода и время</b>: в дождь вода ×1.25, а огонь ×0.8; ночью тьма ×1.2.</p>' +
+      '<p>Считать самому не нужно: в меню атак у каждого умения написан готовый разброс «урон 47–55» именно по текущему врагу. «Точн.» — шанс попасть.</p>' +
+      '<p>Если под твоей панелью горит «⚠ стихия врага сильнее твоей» — повод сменить бойца через «Братва»: на кнопках замены видно, кто сколько врежет этому врагу.</p>' },
+    { id: 'types', ic: '🌈', title: 'Стихии', html:
+      '<p>Кто кого бьёт (работает в обе стороны — и против тебя тоже):</p>' + guideTypeRows() },
+    { id: 'stats', ic: '📊', title: 'Характеристики', html:
+      '<p>• <b>ОЗ</b> — здоровье; на нуле боец выбывает до лечения.<br>' +
+      '• <b>АТК</b> — сила ударов.<br>' +
+      '• <b>ЗАЩ</b> — режет входящий урон.<br>' +
+      '• <b>СКР</b> — кто ходит первым; ещё помогает сбежать из боя.<br>' +
+      '• <b>ПП</b> — запас применений умения. Кончились все — остаётся «Отчаянный удар» с отдачей. 🔷 Эфир восполняет всё.<br>' +
+      '• <b>Амулеты</b> из лавки дают носителю +15% к выбранному стату.</p>' +
+      '<p>Опыт: слабые враги почти не качают — при разрыве больше 5 уровней опыт сильно режется. На высоких уровнях качайся в башне.</p>' },
+    { id: 'moves', ic: '📜', title: 'Умения и их порядок', html:
+      '<p>У братишки до 4 умений. В его карточке (ℹ️ в «Братве») тап по умению поднимает его выше — это тот порядок, в котором умения лежат в меню боя: любимое держи первым, чтобы не листать. На силу умений порядок не влияет.</p>' +
+      '<p>Новые умения учат 📜 свитками (лавка, башня, задания) — там же в карточке.</p>' },
+    { id: 'items', ic: '🎒', title: 'Предметы и сферы', html:
+      '<p>Весь запас виден в «Братве» — строка 🎒 сверху. 🧪 Зелье лечит 50% ОЗ, ✨ Суперзелье — полностью, 💊 Тоник снимает недуг, 🔷 Эфир возвращает все ПП, 🪨 Камень эво мгновенно эволюционирует, 💠 Мега-камень — для мегаэволюции.</p>' +
+      '<p>Сферы ловли: ' + BALL_TYPES.map(b => b.ic + ' ' + b.name.toLowerCase()).join(', ') + '. Шанс выше, когда у цели мало ОЗ, и ниже против высоких уровней; чем дороже сфера, тем надёжнее — 🟡 златая ловит всегда. В бою у каждой сферы показан живой процент.</p>' },
+    { id: 'travel', ic: '⛲', title: 'Фонтаны и карта', html:
+      '<p>Фонтан в городе бесплатно лечит всю братву, снимает недуги и восполняет ПП. Каждый фонтан, которого ты коснулся, остаётся точкой телепорта: открой карту' + keyHint('M') + ' — список отсортирован от ближнего к дальнему и листается.</p>' },
+    { id: 'nursery', ic: '🥚', title: 'Питомник', html:
+      '<p>Приноси двух родителей и 500₴ — получишь яйцо. Вид малыша — случайного из родителей (50/50), плюс он унаследует одно случайное умение одного из них. Шанс ✨сияющего — 1/32, а с сияющим родителем — 1/8. Вылупится через 300 шагов прогулки.</p>' },
+    { id: 'mounts', ic: '🐎', title: 'Маунты', html:
+      '<p>Зажми бег — и поедешь верхом: 🐎 первый в братве <b>братан финальной стадии</b> возит по суше ×1.5; 🛴 самокат (⭐ товар из лавки) — ×1.8. По воде тебя сам везёт 💧 водный братишка от 15 уровня. Иконка на кнопке бега подсказывает, кто повезёт.</p>' },
+    { id: 'quests', ic: '📋', title: 'Задания', html:
+      '<p>Доски 📋 стоят в городах. После сдачи задания доска предложит новое (и само предложение со временем меняется). Повтор того же вида подряд платит вдвое меньше — выгоднее чередовать. Награда растёт с уровнем местности, сверху — свиток или эфир.</p>' },
+    { id: 'endgame', ic: '🗼', title: 'Башня и эндгейм', html:
+      '<p>🗼 Башня — серия боёв без лечения между этажами; каждый третий этаж даёт свиток. После 90 уровня это главное место кача. Потолок уровня — ' + LEVEL_CAP + '.</p>' +
+      '<p>💠 Мегаэволюция: братану финальной стадии с ' + MEGA_LEVEL + ' уровня скорми мега-камень (лавка) — навсегда +35% ко всем статам и новый облик.</p>' },
+  ];
+  const chips = document.getElementById('guide-chips');
+  const body = document.getElementById('guide-body');
+  chips.innerHTML = '';
+  body.innerHTML = '';
+  for (const s of secs) {
+    const sec = document.createElement('div');
+    sec.innerHTML = '<h2>' + s.ic + ' ' + s.title + '</h2>' + s.html;
+    body.appendChild(sec);
+    const chip = document.createElement('button');
+    chip.textContent = s.ic + ' ' + s.title;
+    chip.onclick = () => sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    chips.appendChild(chip);
+  }
 }
 
 // На мобиле клавиатуры нет — убираем «(Esc)», «(Tab)» и т.п. со статичных кнопок
@@ -3353,8 +3476,26 @@ function togglePartyPanel() {
   panel.classList.remove('hidden');
 }
 
+// 🎒 Сумка: игроки не находили, где посмотреть запас зелий — показываем тут
+function renderPartyBag() {
+  const bag = document.getElementById('party-bag');
+  const items = [
+    ['🧪 Зелья', G.bag.potion], ['✨ Суперзелья', G.bag.superpotion],
+    ['💊 Тоники', G.bag.tonic], ['🔷 Эфиры', G.bag.ether],
+    ...BALL_TYPES.map(b => [b.ic + ' ' + b.name, G.balls[b.id]]),
+    ['🪨 Камни эво', G.bag.stone], ['💠 Мега-камни', G.bag.megastone],
+    ['📜 Свитки', G.scrolls.length], ['🎣 Удочка', G.bag.rod ? 1 : 0, true],
+  ];
+  const chips = items.filter(([, n]) => n > 0)
+    .map(([nm, n, noCount]) => '<span style="background:var(--ui-panel);border:2px solid var(--ui-border);border-radius:6px;padding:3px 8px;">' +
+      nm + (noCount ? '' : ' <b style="color:var(--ui-accent)">×' + n + '</b>') + '</span>')
+    .join('');
+  bag.innerHTML = chips ? '<span style="opacity:.6;align-self:center">🎒</span>' + chips : '';
+}
+
 // Компактный список: спрайт, имя, уровень, тип, эво, ОЗ — детали в модалке
 function renderPartyRows() {
+  renderPartyBag();
   const rows = document.getElementById('party-rows');
   rows.innerHTML = '';
   G.party.forEach((m, i) => {
@@ -3433,7 +3574,7 @@ function openMonDetail(i) {
   // умения: тап — поднять выше в списке
   const mvTitle = document.createElement('div');
   mvTitle.style.cssText = 'opacity:.7;font-size:12px;text-align:left;';
-  mvTitle.textContent = 'Умения (тап — поднять выше):';
+  mvTitle.textContent = 'Умения (тап — поднять выше; это порядок в меню боя):';
   body.appendChild(mvTitle);
   const mvDiv = document.createElement('div');
   mvDiv.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
@@ -3715,6 +3856,7 @@ function initInput() {
     if (e.code === 'KeyG' && G.state === 'world') { setGrind(!GRIND_ON); return; }
     if (e.code === 'KeyT' && (G.state === 'world' || G.state === 'friend')) { toggleFriendPanel(); return; }
     if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
+    if (e.code === 'KeyH' && (G.state === 'world' || G.state === 'guide')) { toggleGuide(); return; }
     if (e.code === 'Comma' && (G.state === 'world' || G.state === 'settings')) { toggleSettings(); return; }
     if (e.key === 'Escape' && G.state === 'accshop') { closeAccShop(); return; }
     if (e.key === 'Escape' && G.state === 'wardrobe') { closeWardrobe(); return; }
@@ -3733,6 +3875,7 @@ function initInput() {
       if (G.state === 'board') { closeBoard(); return; }
       if (G.state === 'friend') { toggleFriendPanel(); return; }
       if (G.state === 'storage') { toggleStorage(); return; }
+      if (G.state === 'guide') { closeGuide(); return; }
       if (G.state === 'settings') { toggleSettings(); return; }
       if (G.state === 'world') { toggleSettings(); return; }
     }
@@ -3778,6 +3921,8 @@ function initTitle() {
   document.getElementById('bt-auto').onclick = () => Battle.setAuto(!Battle._auto);
   document.getElementById('bt-speed').onclick = () => Battle.cycleSpeed();
   document.getElementById('set-wardrobe').onclick = () => openWardrobe();
+  document.getElementById('set-guide').onclick = () => openGuide();
+  document.getElementById('btn-guide-close').onclick = () => closeGuide();
   document.getElementById('btn-wardrobe-close').onclick = () => closeWardrobe();
   document.getElementById('wrd-shop').onclick = () => openAccShop();
   document.getElementById('btn-accshop-close').onclick = () => closeAccShop();
@@ -3889,7 +4034,7 @@ function initTouch() {
   document.getElementById('t-fish').addEventListener('pointerdown', e => { e.preventDefault(); tryFishing(); });
   document.getElementById('t-grind').addEventListener('pointerdown', e => { e.preventDefault(); setGrind(!GRIND_ON); });
   // меню-кнопки
-  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, settings: toggleSettings };
+  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, guide: toggleGuide, settings: toggleSettings };
   document.querySelectorAll('#touch-menu .tbtn').forEach(btn => {
     btn.addEventListener('pointerdown', e => { e.preventDefault(); panelFns[btn.dataset.panel](); });
   });

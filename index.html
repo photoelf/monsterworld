@@ -197,6 +197,11 @@
   }
   #bt-menu:empty { display: none; }
   #bt-menu button small { display: block; font-size: 11px; opacity: .75; }
+  /* ---------- Гайд ---------- */
+  #guide-chips button { font-size: 12px; padding: 4px 8px; }
+  #guide-body h2 { color: var(--ui-accent); font-size: 15px; margin: 16px 0 6px; }
+  #guide-body > div:first-child h2 { margin-top: 0; }
+  #guide-body p { margin: 5px 0; opacity: .92; }
   /* ---------- Братва ---------- */
   #party-panel { gap: 8px; }
   .prow {
@@ -234,6 +239,21 @@
     image-rendering: pixelated; max-width: 92%;
   }
   #map-travel button { font-size: 12px; padding: 5px 10px; }
+  /* список фонтанов: свой скролл с видимым скроллбаром + затухание снизу как
+     индикатор «список продолжается» (игроки не догадывались, что он листается) */
+  #map-travel-wrap { position: relative; max-width: 720px; }
+  #map-travel {
+    display: flex; gap: 8px; flex-wrap: wrap; justify-content: center;
+    max-height: 168px; overflow-y: auto; padding: 2px 6px;
+    scrollbar-width: thin; scrollbar-color: var(--ui-border) transparent;
+  }
+  #map-travel::-webkit-scrollbar { width: 8px; }
+  #map-travel::-webkit-scrollbar-thumb { background: var(--ui-border); border-radius: 4px; }
+  #map-travel::-webkit-scrollbar-track { background: transparent; }
+  #map-travel-wrap.has-more::after {
+    content: ''; position: absolute; left: 0; right: 8px; bottom: 0; height: 26px;
+    background: linear-gradient(transparent, rgba(10,10,18,.95)); pointer-events: none;
+  }
   .arow {
     display: flex; align-items: center; gap: 10px; width: 520px; text-align: left;
     background: var(--ui-panel); border: 2px solid var(--ui-border); border-radius: 6px;
@@ -332,7 +352,7 @@
   body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
   body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
   body.mobile #friend-main, body.mobile #dex-grid, body.mobile #trade-rows,
-  body.mobile #wrd-owned {
+  body.mobile #wrd-owned, body.mobile #guide-body {
     max-height: none !important; flex-shrink: 0;
   }
   /* магазин стиля и на мобиле не скроллится страницей — крутится только #shop-cats */
@@ -347,7 +367,8 @@
   body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
   body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
   body.mobile #trade-rows, body.mobile #friend-main, body.mobile #dex-grid,
-  body.mobile #board-info, body.mobile #map-travel {
+  body.mobile #board-info, body.mobile #map-travel, body.mobile #map-travel-wrap,
+  body.mobile #guide-body, body.mobile #guide-chips {
     width: 100%; max-width: 100%; overflow-x: hidden;
   }
   body.mobile .prow, body.mobile .srow, body.mobile .arow { width: 100%; }
@@ -486,7 +507,7 @@
     <div id="map-legend" style="font-size:12px;opacity:.8;">
       ⛲ синее — фонтаны · 🟨 песочное — арены · 🟥 красное — лавки · ✚ — ты
     </div>
-    <div id="map-travel" style="display:flex;gap:8px;flex-wrap:wrap;justify-content:center;max-width:720px;"></div>
+    <div id="map-travel-wrap"><div id="map-travel"></div></div>
     <div style="display:flex; gap:10px;">
       <button id="btn-export">📋 Код сейва</button>
       <button id="btn-map-close">Закрыть (M)</button>
@@ -581,6 +602,7 @@
       <button id="set-scooter" style="display:none;">🛴 Самокат: вкл</button>
       <button id="set-fullscreen">⛶ На весь экран</button>
       <button id="set-wardrobe">👕 Гардероб</button>
+      <button id="set-guide">📖 Гайд по игре</button>
       <div style="text-align:left;font-size:13px;opacity:.85;">Режим интерфейса:</div>
       <div id="set-mode" style="display:flex;flex-direction:column;gap:8px;">
         <button data-mode="">Авто</button>
@@ -590,6 +612,14 @@
       <div id="set-mode-note" style="font-size:12px;opacity:.6;"></div>
     </div>
     <button id="btn-settings-close">Закрыть (Esc)</button>
+  </div>
+
+  <!-- Гайд: разъяснение игровых механик (по фидбеку игроков) -->
+  <div id="guide-panel" class="overlay hidden">
+    <h1 style="font-size:22px;">📖 Гайд</h1>
+    <div id="guide-chips" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:min(640px,94vw);flex-shrink:0;"></div>
+    <button id="btn-guide-close" class="close-top">Закрыть (Esc)</button>
+    <div id="guide-body" style="max-height:380px;overflow-y:auto;text-align:left;font-size:13px;line-height:1.55;width:min(640px,94vw);padding:4px 10px;"></div>
   </div>
 
   <!-- Гардероб: перекраски + купленные вещи; покупки — в отдельном магазине -->
@@ -640,6 +670,7 @@
   <!-- Братва -->
   <div id="party-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Братва</h1>
+    <div id="party-bag" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:620px;font-size:12px;"></div>
     <div id="party-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px;"></div>
     <div style="display:flex;gap:10px;">
       <button id="btn-storage-open">📦 Карман</button>
@@ -672,6 +703,7 @@
       <div class="tbtn" data-panel="dex">📕</div>
       <div class="tbtn" data-panel="ach">🏆</div>
       <div class="tbtn" data-panel="friend">🤝</div>
+      <div class="tbtn" data-panel="guide">❓</div>
       <div class="tbtn" data-panel="settings">⚙️</div>
     </div>
     <div id="joy-base"><div id="joy-knob"></div></div>
