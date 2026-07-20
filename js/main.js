@@ -2337,7 +2337,7 @@ function renderShop() {
     // иначе после первой покупки появившаяся «продать» встаёт ровно под палец, и
     // серия быстрых покупок превращается в купить-продать-купить (наступали).
     const sellPrice = Math.max(1, Math.floor(item.price / 2));
-    if (item.id !== 'scroll' && have > 0) {
+    if (have > 0) {
       const sell = document.createElement('button');
       sell.textContent = '💰';
       sell.title = 'Продать за ' + sellPrice + '₴';
@@ -2345,6 +2345,18 @@ function renderShop() {
       sell.onclick = () => {
         if (ballKind) { if (G.balls[ballKind] < 1) return; G.balls[ballKind]--; }
         else if (isCharm) { if (G.charms[charmKind] < 1) return; G.charms[charmKind]--; }
+        else if (item.id === 'scroll') {
+          // свитки индивидуальны — уходит слабейший (power×acc), чтобы не слить ценный
+          if (!G.scrolls.length) return;
+          let wi = 0;
+          G.scrolls.forEach((s, i) => { if (s.power * s.acc < G.scrolls[wi].power * G.scrolls[wi].acc) wi = i; });
+          const gone = G.scrolls.splice(wi, 1)[0];
+          G.money += sellPrice;
+          sfx('pickup');
+          toast('💰 Продан слабейший свиток: «' + gone.name + '» (+' + sellPrice + '₴)');
+          renderShop(); updateHUD(); saveGame();
+          return;
+        }
         else { if (!G.bag[item.id]) return; G.bag[item.id]--; }
         G.money += sellPrice;
         sfx('pickup');
@@ -2912,13 +2924,13 @@ function renderGuide() {
       '• <b>ЗАЩ</b> — режет входящий урон.<br>' +
       '• <b>СКР</b> — кто ходит первым; ещё помогает сбежать из боя.<br>' +
       '• <b>ПП</b> — запас применений умения. Кончились все — остаётся «Отчаянный удар» с отдачей. 🔷 Эфир восполняет всё.<br>' +
-      '• <b>Амулеты</b> из лавки дают носителю +15% к выбранному стату.</p>' +
+      '• <b>Амулеты</b> из лавки дают носителю прибавку к одному стату — насколько большую, зависит от амулета.</p>' +
       '<p>Опыт: слабые враги почти не качают — при разрыве больше 5 уровней опыт сильно режется. На высоких уровнях качайся в башне.</p>' },
     { id: 'moves', ic: '📜', title: 'Умения и их порядок', html:
       '<p>У братишки до 4 умений. В его карточке (ℹ️ в «Братве») тап по умению поднимает его выше — это тот порядок, в котором умения лежат в меню боя: любимое держи первым, чтобы не листать. На силу умений порядок не влияет.</p>' +
       '<p>Новые умения учат 📜 свитками (лавка, башня, задания) — там же в карточке.</p>' },
     { id: 'items', ic: '🎒', title: 'Предметы и сферы', html:
-      '<p>Весь запас виден в «Братве» — строка 🎒 сверху. 🧪 Зелье лечит 50% ОЗ, ✨ Суперзелье — полностью, 💊 Тоник снимает недуг, 🔷 Эфир возвращает все ПП, 🪨 Камень эво мгновенно эволюционирует, 💠 Мега-камень — для мегаэволюции.</p>' +
+      '<p>Весь запас — в 🎒 Инвентаре' + keyHint('I') + '. 🧪 Зелье лечит 50% ОЗ, ✨ Суперзелье — полностью, 💊 Тоник снимает недуг, 🔷 Эфир возвращает все ПП, 🪨 Камень эво мгновенно эволюционирует, 💠 Мега-камень — для мегаэволюции.</p>' +
       '<p>Сферы ловли: ' + BALL_TYPES.map(b => b.ic + ' ' + b.name.toLowerCase()).join(', ') + '. Шанс выше, когда у цели мало ОЗ, и ниже против высоких уровней; чем дороже сфера, тем надёжнее — 🟡 златая ловит всегда. В бою у каждой сферы показан живой процент.</p>' },
     { id: 'travel', ic: '⛲', title: 'Фонтаны и карта', html:
       '<p>Фонтан в городе бесплатно лечит всю братву, снимает недуги и восполняет ПП. Каждый фонтан, которого ты коснулся, остаётся точкой телепорта: открой карту' + keyHint('M') + ' — список отсортирован от ближнего к дальнему и листается.</p>' },
@@ -2979,18 +2991,16 @@ function renderSettings() {
     if (!SOUND_ON) Music.mute(); else if (MUSIC_ON) Music.start();
     renderSettings();
   };
+  // музыка: тап крутит громкость +10% по кругу (…90 → 100 → выкл → 10…), ползунка нет
   const musBtn = document.getElementById('set-music');
-  musBtn.textContent = MUSIC_ON ? '🎵 Музыка и эмбиент: вкл' : '🎵 Музыка и эмбиент: выкл';
-  musBtn.onclick = () => { setMusicOn(!MUSIC_ON); renderSettings(); };
-  // громкость музыки (0–100%, только mp3-треки; эмбиент и sfx не трогает)
-  const volRow = document.getElementById('set-musicvol-row');
-  volRow.style.display = MUSIC_ON ? '' : 'none';
-  const vol = document.getElementById('set-musicvol');
-  vol.value = MUSIC_VOL;
-  document.getElementById('set-musicvol-val').textContent = MUSIC_VOL + '%';
-  vol.oninput = () => {
-    setMusicVol(+vol.value);
-    document.getElementById('set-musicvol-val').textContent = MUSIC_VOL + '%';
+  const musCur = MUSIC_ON ? MUSIC_VOL : 0;
+  musBtn.textContent = musCur > 0 ? '🎵 Музыка: ' + musCur + '%' : '🎵 Музыка: выкл';
+  musBtn.onclick = () => {
+    const cur = MUSIC_ON ? MUSIC_VOL : 0;
+    const next = cur >= 100 ? 0 : Math.min(100, Math.floor(cur / 10) * 10 + 10);
+    if (next > 0) setMusicVol(next); // при «выкл» громкость не трогаем — гасим флагом
+    setMusicOn(next > 0);
+    renderSettings();
   };
   // раскладка джойстика — только на тач-устройствах
   const joyBtn = document.getElementById('set-joyside');
@@ -3493,26 +3503,48 @@ function togglePartyPanel() {
   panel.classList.remove('hidden');
 }
 
-// 🎒 Сумка: игроки не находили, где посмотреть запас зелий — показываем тут
-function renderPartyBag() {
-  const bag = document.getElementById('party-bag');
-  const items = [
-    ['🧪 Зелья', G.bag.potion], ['✨ Суперзелья', G.bag.superpotion],
-    ['💊 Тоники', G.bag.tonic], ['🔷 Эфиры', G.bag.ether],
-    ...BALL_TYPES.map(b => [b.ic + ' ' + b.name, G.balls[b.id]]),
-    ['🪨 Камни эво', G.bag.stone], ['💠 Мега-камни', G.bag.megastone],
-    ['📜 Свитки', G.scrolls.length], ['🎣 Удочка', G.bag.rod ? 1 : 0, true],
-  ];
-  const chips = items.filter(([, n]) => n > 0)
-    .map(([nm, n, noCount]) => '<span style="background:var(--ui-panel);border:2px solid var(--ui-border);border-radius:6px;padding:3px 8px;">' +
-      nm + (noCount ? '' : ' <b style="color:var(--ui-accent)">×' + n + '</b>') + '</span>')
-    .join('');
-  bag.innerHTML = chips ? '<span style="opacity:.6;align-self:center">🎒</span>' + chips : '';
+// ===== Инвентарь (I / 🎒 в тач-меню): те же категории, что в лавке, без цен =====
+
+function toggleInventory() {
+  const panel = document.getElementById('inv-panel');
+  if (G.state === 'inv') { panel.classList.add('hidden'); G.state = 'world'; return; }
+  if (G.state !== 'world') return;
+  G.state = 'inv';
+  renderInventory();
+  panel.classList.remove('hidden');
+}
+
+function renderInventory() {
+  const rows = document.getElementById('inv-rows');
+  rows.innerHTML = '';
+  const count = it => it.id.startsWith('ball_') ? G.balls[it.id.slice(5)]
+    : it.id === 'scroll' ? G.scrolls.length
+    : it.id.startsWith('charm_') ? G.charms[it.id.slice(6)]
+    : G.bag[it.id] || 0;
+  let any = false;
+  for (const [cat, label] of SHOP_CATS) {
+    if (cat === 'donate') continue; // премиум-витрина — не предметы
+    const items = SHOP_ITEMS.filter(it => it.cat === cat && count(it) > 0);
+    if (!items.length) continue;
+    any = true;
+    const h = document.createElement('div');
+    h.style.cssText = 'font-size:13px;opacity:.85;margin-top:6px;text-align:left;';
+    h.textContent = label + ':';
+    rows.appendChild(h);
+    for (const it of items) {
+      const row = document.createElement('div');
+      row.className = 'srow';
+      row.innerHTML = '<div class="info"><span class="nm">' + it.name + '</span> — есть ' +
+        (it.id === 'rod' ? '✔' : '<b style="color:var(--ui-accent)">' + count(it) + '</b>') +
+        '<br><span style="opacity:.8">' + it.desc + '</span></div>';
+      rows.appendChild(row);
+    }
+  }
+  if (!any) rows.innerHTML = '<span style="opacity:.6">Пусто. Загляни в лавку в городе!</span>';
 }
 
 // Компактный список: спрайт, имя, уровень, тип, эво, ОЗ — детали в модалке
 function renderPartyRows() {
-  renderPartyBag();
   const rows = document.getElementById('party-rows');
   rows.innerHTML = '';
   G.party.forEach((m, i) => {
@@ -3874,6 +3906,7 @@ function initInput() {
     if (e.code === 'KeyT' && (G.state === 'world' || G.state === 'friend')) { toggleFriendPanel(); return; }
     if (e.code === 'KeyB' && (G.state === 'world' || G.state === 'storage' || G.state === 'party')) { toggleStorage(); return; }
     if (e.code === 'KeyH' && (G.state === 'world' || G.state === 'guide')) { toggleGuide(); return; }
+    if (e.code === 'KeyI' && (G.state === 'world' || G.state === 'inv')) { toggleInventory(); return; }
     if (e.code === 'Comma' && (G.state === 'world' || G.state === 'settings')) { toggleSettings(); return; }
     if (e.key === 'Escape' && G.state === 'accshop') { closeAccShop(); return; }
     if (e.key === 'Escape' && G.state === 'wardrobe') { closeWardrobe(); return; }
@@ -3893,6 +3926,7 @@ function initInput() {
       if (G.state === 'friend') { toggleFriendPanel(); return; }
       if (G.state === 'storage') { toggleStorage(); return; }
       if (G.state === 'guide') { closeGuide(); return; }
+      if (G.state === 'inv') { toggleInventory(); return; }
       if (G.state === 'settings') { toggleSettings(); return; }
       if (G.state === 'world') { toggleSettings(); return; }
     }
@@ -3940,6 +3974,7 @@ function initTitle() {
   document.getElementById('set-wardrobe').onclick = () => openWardrobe();
   document.getElementById('set-guide').onclick = () => openGuide();
   document.getElementById('btn-guide-close').onclick = () => closeGuide();
+  document.getElementById('btn-inv-close').onclick = () => toggleInventory();
   document.getElementById('btn-wardrobe-close').onclick = () => closeWardrobe();
   document.getElementById('wrd-shop').onclick = () => openAccShop();
   document.getElementById('btn-accshop-close').onclick = () => closeAccShop();
@@ -4051,7 +4086,7 @@ function initTouch() {
   document.getElementById('t-fish').addEventListener('pointerdown', e => { e.preventDefault(); tryFishing(); });
   document.getElementById('t-grind').addEventListener('pointerdown', e => { e.preventDefault(); setGrind(!GRIND_ON); });
   // меню-кнопки
-  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, guide: toggleGuide, settings: toggleSettings };
+  const panelFns = { party: togglePartyPanel, map: toggleMap, dex: toggleDex, ach: toggleAchievements, friend: toggleFriendPanel, inv: toggleInventory, settings: toggleSettings };
   document.querySelectorAll('#touch-menu .tbtn').forEach(btn => {
     btn.addEventListener('pointerdown', e => { e.preventDefault(); panelFns[btn.dataset.panel](); });
   });

@@ -352,7 +352,7 @@
   body.mobile #party-rows, body.mobile #storage-rows, body.mobile #shop-rows,
   body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
   body.mobile #friend-main, body.mobile #dex-grid, body.mobile #trade-rows,
-  body.mobile #wrd-owned, body.mobile #guide-body {
+  body.mobile #wrd-owned, body.mobile #guide-body, body.mobile #inv-rows {
     max-height: none !important; flex-shrink: 0;
   }
   /* магазин стиля и на мобиле не скроллится страницей — крутится только #shop-cats */
@@ -368,7 +368,7 @@
   body.mobile #ach-rows, body.mobile #teach-rows, body.mobile #nursery-rows,
   body.mobile #trade-rows, body.mobile #friend-main, body.mobile #dex-grid,
   body.mobile #board-info, body.mobile #map-travel, body.mobile #map-travel-wrap,
-  body.mobile #guide-body, body.mobile #guide-chips {
+  body.mobile #guide-body, body.mobile #guide-chips, body.mobile #inv-rows {
     width: 100%; max-width: 100%; overflow-x: hidden;
   }
   body.mobile .prow, body.mobile .srow, body.mobile .arow { width: 100%; }
@@ -420,7 +420,7 @@
     <div class="hud-box" id="hud-party"></div>
   </div>
   <div id="toast"></div>
-  <div id="hint">WASD · Shift — бег · Tab — братва · B — карман · M — карта · P — педия · O — награды · T — обмен/PvP</div>
+  <div id="hint">WASD · Shift — бег · Tab — братва · I — инвентарь · B — карман · M — карта · P — педия · O — награды · T — обмен/PvP</div>
 
   <!-- Титульный экран -->
   <div id="title" class="overlay">
@@ -590,26 +590,23 @@
   <div id="settings-panel" class="overlay hidden">
     <h1 style="font-size:22px;">⚙️ Настройки</h1>
     <div style="display:flex;flex-direction:column;gap:14px;width:min(340px,94vw);">
-      <button id="set-sound">🔊 Звук: вкл</button>
-      <button id="set-music">🎵 Музыка и эмбиент: вкл</button>
-      <div id="set-musicvol-row" style="display:flex;align-items:center;gap:10px;">
-        <span style="font-size:13px;white-space:nowrap;">🎚 Музыка</span>
-        <input type="range" id="set-musicvol" min="0" max="100" step="5" style="flex:1;min-width:0;">
-        <span id="set-musicvol-val" style="min-width:42px;text-align:right;font-size:13px;">20%</span>
+      <div style="display:flex;gap:8px;">
+        <button id="set-sound" style="flex:1;">🔊 Звук: вкл</button>
+        <button id="set-music" style="flex:1;">🎵 Музыка: 20%</button>
       </div>
-      <button id="set-joyside" style="display:none;">🕹 Стик справа, кнопки слева</button>
-      <button id="set-scum" style="display:none;">💾 Сейвскам: выкл</button>
-      <button id="set-scooter" style="display:none;">🛴 Самокат: вкл</button>
-      <button id="set-fullscreen">⛶ На весь экран</button>
-      <button id="set-wardrobe">👕 Гардероб</button>
-      <button id="set-guide">📖 Гайд по игре</button>
-      <div style="text-align:left;font-size:13px;opacity:.85;">Режим интерфейса:</div>
-      <div id="set-mode" style="display:flex;flex-direction:column;gap:8px;">
-        <button data-mode="">Авто</button>
-        <button data-mode="mobile">📱 Мобильный</button>
-        <button data-mode="desktop">🖥 Десктоп</button>
+      <div style="text-align:left;font-size:13px;opacity:.85;">Интерфейс:</div>
+      <div id="set-mode" style="display:flex;gap:8px;">
+        <button data-mode="" style="flex:1;">Авто</button>
+        <button data-mode="mobile" style="flex:1;">📱 Моб</button>
+        <button data-mode="desktop" style="flex:1;">🖥 Деск</button>
       </div>
       <div id="set-mode-note" style="font-size:12px;opacity:.6;"></div>
+      <button id="set-joyside" style="display:none;">🕹 Стик справа, кнопки слева</button>
+      <button id="set-fullscreen">⛶ На весь экран</button>
+      <button id="set-wardrobe">👕 Гардероб</button>
+      <button id="set-guide">❓ Гайд по игре</button>
+      <button id="set-scum" style="display:none;">💾 Сейвскам: выкл</button>
+      <button id="set-scooter" style="display:none;">🛴 Самокат: вкл</button>
     </div>
     <button id="btn-settings-close">Закрыть (Esc)</button>
   </div>
@@ -620,6 +617,13 @@
     <div id="guide-chips" style="display:flex;gap:4px;flex-wrap:wrap;justify-content:center;max-width:min(640px,94vw);flex-shrink:0;"></div>
     <button id="btn-guide-close" class="close-top">Закрыть (Esc)</button>
     <div id="guide-body" style="max-height:380px;overflow-y:auto;text-align:left;font-size:13px;line-height:1.55;width:min(640px,94vw);padding:4px 10px;"></div>
+  </div>
+
+  <!-- Инвентарь: что есть в сумке, без цен (покупки — в лавке) -->
+  <div id="inv-panel" class="overlay hidden">
+    <h1 style="font-size:22px;">🎒 Инвентарь</h1>
+    <div id="inv-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:6px;padding:4px;width:min(560px,94vw);"></div>
+    <button id="btn-inv-close">Закрыть (I)</button>
   </div>
 
   <!-- Гардероб: перекраски + купленные вещи; покупки — в отдельном магазине -->
@@ -670,7 +674,6 @@
   <!-- Братва -->
   <div id="party-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Братва</h1>
-    <div id="party-bag" style="display:flex;gap:6px;flex-wrap:wrap;justify-content:center;max-width:620px;font-size:12px;"></div>
     <div id="party-rows" style="max-height:380px;overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:4px;"></div>
     <div style="display:flex;gap:10px;">
       <button id="btn-storage-open">📦 Карман</button>
@@ -703,7 +706,7 @@
       <div class="tbtn" data-panel="dex">📕</div>
       <div class="tbtn" data-panel="ach">🏆</div>
       <div class="tbtn" data-panel="friend">🤝</div>
-      <div class="tbtn" data-panel="guide">❓</div>
+      <div class="tbtn" data-panel="inv">🎒</div>
       <div class="tbtn" data-panel="settings">⚙️</div>
     </div>
     <div id="joy-base"><div id="joy-knob"></div></div>
