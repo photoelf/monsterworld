@@ -260,11 +260,13 @@ function nzAfterWild(enc, wild, result) {
 // Показать состав команды тренера/лидера перед боем и спросить подтверждение —
 // без этого permadeath-бой начинался бы вслепую (случайный «живой» соперник или
 // неизвестная команда, в отличие от классических игр серии, где расстановку
-// боец знал заранее). Native confirm() безопасен: зовётся из step() (мир), ДО
-// старта Battle.run — тот же паттерн, что и подтверждение входа в башню.
+// боец знал заранее). Своё UI (uiConfirm), не нативный confirm(): зовётся из
+// step() (мир), ДО старта Battle.run — тот же паттерн, что и вход в башню.
 function nzConfirmBattle(name, team) {
-  const lines = team.map(m => TYPE_INFO[monType(m)].ru + ' ' + monSpeciesName(m) + ' (' + m.level + ' ур.)').join('\n');
-  return confirm('⚔️ ' + name + '\n' + lines + '\n\nВызвать на бой?');
+  const body = document.createElement('div');
+  body.style.cssText = 'display:flex;flex-direction:column;gap:6px;';
+  team.forEach(m => body.appendChild(teamPreviewRow(m)));
+  return uiConfirm('⚔️ ' + name, body, '⚔️ Вызвать на бой', '‹ Отступить');
 }
 
 // Кличка обязательна (боевой экран уже закрыт — нативный prompt безопасен)

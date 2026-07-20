@@ -547,6 +547,17 @@
     </div>
   </div>
 
+  <!-- Подтверждение своим UI (бой с тренером/лидером, вход в башню, этажи) —
+       вместо нативных confirm()/alert(), которые блокируют весь поток -->
+  <div id="confirm-panel" class="overlay hidden">
+    <h1 id="confirm-title" style="font-size:20px;"></h1>
+    <div id="confirm-body" style="display:flex;flex-direction:column;gap:8px;max-width:520px;max-height:60vh;overflow-y:auto;"></div>
+    <div style="display:flex; gap:10px;">
+      <button id="confirm-no"></button>
+      <button id="confirm-yes"></button>
+    </div>
+  </div>
+
   <!-- Обмен -->
   <div id="trade-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Обменник</h1>

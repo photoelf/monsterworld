@@ -476,6 +476,56 @@ function hint(id, text, maxShow) {
   saveGame();
 }
 
+// Подтверждение через наше UI вместо нативного confirm(): нативный диалог
+// блокирует весь поток (в т.ч. requestAnimationFrame) и рвёт async-цепочки
+// (сейвскам-откат в бою уже страдал от этого) — здесь просто промис поверх
+// overlay-панели с двумя кнопками. Безопасный выбор — ПЕРВОЙ кнопкой (как и
+// «Остаться» в подтверждении побега): случайный повторный тап в ту же точку
+// экрана попадает в отмену, а не в подтверждение.
+let _confirmPrevState = null;
+// body — HTML-строка ИЛИ живой DOM-узел (нужен для строк с канвасами спрайтов:
+// monMiniCanvas рисует пикселями в реальный <canvas>, innerHTML/outerHTML
+// такую отрисовку не сериализует — узел обязан остаться тем же элементом)
+function uiConfirm(title, body, yesLabel, noLabel) {
+  return new Promise(resolve => {
+    _confirmPrevState = G.state;
+    G.state = 'confirm';
+    document.getElementById('confirm-title').textContent = title;
+    const bodyEl = document.getElementById('confirm-body');
+    if (typeof body === 'string') bodyEl.innerHTML = body;
+    else { bodyEl.innerHTML = ''; bodyEl.appendChild(body); }
+    const yesBtn = document.getElementById('confirm-yes');
+    const noBtn = document.getElementById('confirm-no');
+    yesBtn.textContent = yesLabel || 'Да';
+    noBtn.textContent = noLabel || 'Отмена';
+    document.getElementById('confirm-panel').classList.remove('hidden');
+    const finish = v => {
+      document.getElementById('confirm-panel').classList.add('hidden');
+      G.state = _confirmPrevState;
+      yesBtn.onclick = null; noBtn.onclick = null;
+      resolve(v);
+    };
+    yesBtn.onclick = () => finish(true);
+    noBtn.onclick = () => finish(false);
+  });
+}
+
+// Строка чужого братишки для team-preview (nzConfirmBattle) — тот же
+// спрайт+инфо стиль, что и остальные списки (Карман/Кладбище/Лавка).
+// Видовое имя, а не кличка — это команда соперника, клички у неё нет.
+function teamPreviewRow(m) {
+  const row = document.createElement('div');
+  row.className = 'srow';
+  row.appendChild(monMiniCanvas(m, 32));
+  const t = TYPE_INFO[monType(m)];
+  const info = document.createElement('div');
+  info.className = 'info';
+  info.innerHTML = '<span class="nm">' + monSpeciesName(m) + '</span> · Ур.' + m.level +
+    ' · <span style="color:' + t.color + '">' + t.ru + '</span>';
+  row.appendChild(info);
+  return row;
+}
+
 // ===== Сохранение =====
 
 // Кастомный спрайт валиден, если это небольшой PNG data-URL
@@ -983,8 +1033,9 @@ async function startTowerRun(tw) {
     }
     floor++;
     // в автобое лезем вверх без вопросов — до проигрыша или ручного стопа
-    if (!Battle._auto && !confirm('Этаж ' + (floor - 1) + ' пройден! Подняться выше? Этаж ' + floor +
-      ' будет сильнее, а братва НЕ лечится.')) break;
+    if (!Battle._auto && !(await uiConfirm('Этаж ' + (floor - 1) + ' пройден!',
+      'Подняться выше? Этаж ' + floor + ' будет сильнее, а братва НЕ лечится.',
+      '⬆ Подняться', '🚪 Хватит, выйти'))) break;
   }
   afterBattle(result);
 }
@@ -2128,7 +2179,7 @@ function step(dt) {
         G.bumpCooldown = BUMP_COOLDOWN;
         if (NZ()) {
           const resolved = resolveTrainerBattle(hit.trainer);
-          if (nzConfirmBattle(resolved.name, resolved.team)) startTrainerBattle(hit.trainer, resolved);
+          nzConfirmBattle(resolved.name, resolved.team).then(ok => { if (ok) startTrainerBattle(hit.trainer, resolved); });
         } else {
           startTrainerBattle(hit.trainer);
         }
@@ -2145,7 +2196,7 @@ function step(dt) {
         if (G.badges.includes(hit.master.id)) {
           toast(hit.master.name + ': «Ты уже чемпион этой арены!»');
         } else if (NZ()) {
-          if (nzConfirmBattle(hit.master.name, World.masterTeam(hit.master))) startArenaBattle(hit.master);
+          nzConfirmBattle(hit.master.name, World.masterTeam(hit.master)).then(ok => { if (ok) startArenaBattle(hit.master); });
         } else {
           startArenaBattle(hit.master);
         }
@@ -2161,8 +2212,9 @@ function step(dt) {
       } else if (bumpTile === T.TOWER) {
         G.bumpCooldown = BUMP_COOLDOWN;
         const tw = World.towerAt(hit.tx, hit.ty);
-        if (tw && confirm('🗼 Башня испытаний! Серия боёв без лечения, каждый этаж сильнее. Войти?')) {
-          startTowerRun(tw);
+        if (tw) {
+          uiConfirm('🗼 Башня испытаний', 'Серия боёв без лечения, каждый этаж сильнее предыдущего. Войти?',
+            '🗼 Войти', '‹ Остаться снаружи').then(ok => { if (ok) startTowerRun(tw); });
           return;
         }
       } else if (bumpTile === T.NURSERY) {
@@ -4365,6 +4417,7 @@ function initInput() {
     if (e.key === 'Escape' && G.state === 'accshop') { closeAccShop(); return; }
     if (e.key === 'Escape' && G.state === 'wardrobe') { closeWardrobe(); return; }
     if (e.key === 'Escape' && G.state === 'mongen') { closeMongen(); return; }
+    if (e.key === 'Escape' && G.state === 'confirm') { document.getElementById('confirm-no').click(); return; }
     if (e.key === 'Escape') {
       if (G.state === 'party') { togglePartyPanel(); return; }
       if (G.state === 'mondetail') { closeMonDetail(); return; }
