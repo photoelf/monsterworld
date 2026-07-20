@@ -115,6 +115,8 @@ function nzNoteFaint(pm, em, opts) {
 }
 
 function nzBury(m) {
+  // амулет возвращается в сумку — как при обмене (tradeEscrow)
+  if (m.charm) { G.charms[m.charm]++; m.charm = null; recalcStats(m); }
   G.nz.graveyard.push({
     mon: dumpOwnedMon(m),
     caughtLvl: m.nzCaughtLvl || 1,
