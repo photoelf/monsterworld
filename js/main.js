@@ -2853,20 +2853,23 @@ function renderMap() {
     // (city.x/y уже привязаны к нему) — сразу видно уровень лидера и бит ли он
     const city = World.cityInfoAt(f.x, f.y);
     const master = city ? World.arenaMasterAt(city.x, city.y) : null;
+    // master.level — номинальный уровень территории (levelAt+4), НЕ уровень команды:
+    // каждый из 3 бойцов лидера получает +0..3 к нему независимо (masterTeam) —
+    // показываем реальный максимум, иначе игрок закладывается на заниженное число
+    const ace = master ? nzAceLevel(master) : 0;
     const beaten = !!(master && G.badges.includes(master.id));
-    return { f, dist, city, master, beaten };
+    return { f, dist, city, master, ace, beaten };
   });
   if (mapSort === 'power') {
-    entries.sort((a, b) => (a.beaten - b.beaten) ||
-      ((a.master ? a.master.level : 999) - (b.master ? b.master.level : 999)) || (a.dist - b.dist));
+    entries.sort((a, b) => (a.beaten - b.beaten) || (a.ace - b.ace) || (a.dist - b.dist));
   } else {
     entries.sort((a, b) => a.dist - b.dist);
   }
-  for (const { f, dist, city, master, beaten } of entries) {
+  for (const { f, dist, city, master, ace, beaten } of entries) {
     const b = document.createElement('button');
     // 1 км = 10 тайлов
     let label = '⛲ ' + (city ? city.name : 'Дикие места') + ' · ' + (dist / 10).toFixed(1) + ' км';
-    if (master) label += ' · 🏅ур.' + master.level + (beaten ? ' ✅' : ' ⚔️');
+    if (master) label += ' · 🏅ур.' + ace + (beaten ? ' ✅' : ' ⚔️');
     b.textContent = label;
     b.style.opacity = beaten ? '.55' : '';
     b.onclick = () => travelToFountain(f);
