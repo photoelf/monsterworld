@@ -440,7 +440,8 @@ function updateHUD() {
     ' · x:' + px + ' y:' + py + ' · ур. диких ~' + World.levelAt(px, py) +
     (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() +
     (NZ() ? (() => { const z = nzZoneAt(px, py);
-      return ' · 📍' + z.name + (G.nz.zones[z.id] ? ' ✔' : ' 🎯'); })() : '') + '</span>';
+      return ' · 📍' + z.name + (G.nz.zones[z.id] ? ' ✔' : ' 🎯'); })() : '') +
+    (NZ() ? ' · ⛔' + nzCap() : '') + '</span>';
   const p = document.getElementById('hud-party');
   p.innerHTML = G.party.map(m => {
     const pct = Math.max(0, m.hp / m.maxHp * 100);
@@ -897,6 +898,11 @@ async function startArenaBattle(master) {
     G.stats.trainersBeaten++;
     questProgress('trainer');
     if (!G.badges.includes(master.id)) G.badges.push(master.id);
+    if (NZ()) {
+      G.nz.stats.leaders++;
+      nzLog('leader', { name: master.name, ace: nzAceLevel(master) });
+      nzRecalcCap(master);
+    }
   }
   afterBattle(result);
 }
@@ -1189,6 +1195,7 @@ function onTileEnter(tx, ty) {
   if (cityId !== G.lastCityId) {
     G.lastCityId = cityId;
     if (city) toast('🏙️ Добро пожаловать: ' + city.name + '!');
+    if (city) nzRegisterCity(city);
   }
   // климат для ачивки
   const tile0 = World.tileAt(tx, ty);

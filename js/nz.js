@@ -23,6 +23,38 @@ function nzFreshState() {
 
 function nzLoadState(d) { return Object.assign(nzFreshState(), d || {}); }
 
+function nzCap() { return NZ() ? (G.nz.cap | 0) || 15 : LEVEL_CAP; }
+
+// Туз лидера: максимальный уровень его команды (детерминирован сидом мастера)
+function nzAceLevel(master) {
+  return Math.max(...World.masterTeam(master).map(m => m.level));
+}
+
+// Город открыт — запомнить и пересчитать кап
+function nzRegisterCity(city) {
+  if (!NZ() || !city || G.nz.cities[city.id]) return;
+  G.nz.cities[city.id] = { x: city.x, y: city.y };
+  nzRecalcCap();
+}
+
+// Кап = туз слабейшего НЕпобеждённого лидера среди открытых городов.
+// Все открытые побеждены — туз последнего побеждённого + 10. Кап только растёт.
+function nzRecalcCap(justBeatenMaster) {
+  const unbeaten = [];
+  for (const id in G.nz.cities) {
+    const c = G.nz.cities[id];
+    const master = World.arenaMasterAt(c.x, c.y);
+    if (master && !G.badges.includes(master.id)) unbeaten.push(nzAceLevel(master));
+  }
+  let next = G.nz.cap;
+  if (unbeaten.length) next = Math.min(...unbeaten);
+  else if (justBeatenMaster) next = nzAceLevel(justBeatenMaster) + 10;
+  if (next > G.nz.cap) {
+    G.nz.cap = next;
+    toast('⛔ Левел-кап поднят до ' + next + '! Братва может расти.');
+  }
+}
+
 // Событие летописи. Только данные — текст соберёт nzLogText при рендере,
 // поэтому сейв не пухнет и старые записи получают новые формулировки.
 function nzLog(kind, data) {
