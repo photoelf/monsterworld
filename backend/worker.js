@@ -1,7 +1,10 @@
 'use strict';
 
 // ===== Monsterworld API: снапшоты команд игроков + Stars-платежи =====
-// Cloudflare Worker + KV (binding SNAPS). Секреты: BOT_TOKEN, WEBHOOK_SECRET.
+// Cloudflare Worker. Горячий игровой поток (команды/лидерборд/PvP) — D1 (binding DB,
+// см. backend/schema.sql); покупки и редкие ключи — KV (binding SNAPS). D1 даёт
+// 100k записей/сутки против 1000 у KV: игровой поток (запись после каждого боя)
+// упирался в дневной лимит KV. Секреты: BOT_TOKEN, WEBHOOK_SECRET.
 // POST /team          {id, nick, team:[monDump...]} — залить свою команду
 // GET  /team/random?not=<id>                        — случайная чужая команда
 // POST /invoice       {id}                          — ссылка-счёт Telegram Stars
@@ -57,12 +60,13 @@ const PRODUCTS = {
          thanks: '⭐ Спасибо! Автокач открыт — кнопка появится в дикой зоне.' },
 };
 
-const INDEX_KEY = 'idx';
-const INDEX_CAP = 1500;         // сколько команд держим в ротации
-const SNAP_TTL = 60 * 86400;    // сейчас неактивные игроки уходят из ротации через 60 дней
+const SNAP_TTL = 60 * 86400;    // неактивные команды выпадают из выборки через 60 дней
+const PVP_TTL = 3 * 86400;      // PvP-вызов живёт 3 дня
+const LB_CAP = 50;              // сколько строк лидерборда отдаём
 
-const LB_KEY = 'lb';            // лидерборд: топ по силе братвы
-const LB_CAP = 50;              // сколько строк храним/отдаём
+// ts в строках D1 — миллисекунды (Date.now()); TTL-константы в секундах → ×1000.
+// msAgo(SNAP_TTL) = порог «моложе которого команда ещё в выборке».
+const msAgo = secs => Date.now() - secs * 1000;
 
 // Сила братвы из уже валидированной команды
 // (level ≤ 100, stage ≤ 2, шайни +5, мега +15 → потолок 6×140 = 840)
@@ -235,58 +239,47 @@ export default {
       if (!Array.isArray(body.team)) return json({ err: 'bad team' }, 400);
       const team = body.team.slice(0, 6).map(validMon).filter(Boolean);
       if (!team.length) return json({ err: 'empty team' }, 400);
-      const snap = {
-        nick: sanitizeNick(body.nick),
-        team,
-        ts: Date.now(),
-      };
-      await env.SNAPS.put('t:' + id, JSON.stringify(snap), { expirationTtl: SNAP_TTL });
-      // индекс для случайной выборки (гонки записи не критичны)
-      let idx = [];
-      try { idx = JSON.parse(await env.SNAPS.get(INDEX_KEY)) || []; } catch (e) {}
-      if (!idx.includes(id)) {
-        idx.push(id);
-        if (idx.length > INDEX_CAP) idx.splice(Math.floor(Math.random() * idx.length), 1);
-        await env.SNAPS.put(INDEX_KEY, JSON.stringify(idx));
-      }
+      const nick = sanitizeNick(body.nick);
+      const now = Date.now();
+      // один INSERT OR REPLACE — индекс пула (был массив idx в KV) больше не нужен:
+      // случайного соперника даёт ORDER BY RANDOM() в /team/random.
+      await env.DB.prepare('INSERT OR REPLACE INTO teams(id,nick,team,ts) VALUES(?,?,?,?)')
+        .bind(id, nick, JSON.stringify(team), now).run();
+
       // лидерборд гейтится подписанным tg-id: открытый /team накручивается
       // curl-ом, поэтому анонимные снапшоты кормят только пул соперников.
-      // Строка = последний залитый снапшот этого tg-id (дедуп по нему же).
+      // Строка = последний залитый снапшот этого tg-id (дедуп по PRIMARY KEY tg).
       const user = body.initData ? await verifyInitData(env, body.initData) : null;
       if (user && user.id) {
-        const entry = {
-          tg: user.id,
-          nick: snap.nick,
-          power: teamPower(team),
-          badges: Math.min(99, Math.max(0, body.badges | 0)),
-          dex: Math.min(999, Math.max(0, body.dex | 0)),
-          ts: Date.now(),
-        };
-        let lb = [];
-        try { lb = JSON.parse(await env.SNAPS.get(LB_KEY)) || []; } catch (e) {}
-        const prev = lb.find(e => e && e.tg === entry.tg);
-        const same = prev && prev.nick === entry.nick && prev.power === entry.power
-          && prev.badges === entry.badges && prev.dex === entry.dex;
-        // не переписываем lb, если строка игрока не изменилась (ts не в счёт)
-        // или новичок всё равно не проходит в заполненный топ — экономия KV-записей
-        const below = !prev && lb.length >= LB_CAP && entry.power <= lb[lb.length - 1].power;
-        if (!same && !below) {
-          lb = lb.filter(e => e && e.tg !== entry.tg);
-          lb.push(entry);
-          lb.sort((a, b) => b.power - a.power);
-          if (lb.length > LB_CAP) lb.length = LB_CAP;
-          await env.SNAPS.put(LB_KEY, JSON.stringify(lb));
+        const power = teamPower(team);
+        const badges = Math.min(99, Math.max(0, body.badges | 0));
+        const dex = Math.min(999, Math.max(0, body.dex | 0));
+        // не переписываем строку, если ничего не изменилось (ts не в счёт)
+        const prev = await env.DB.prepare('SELECT nick,power,badges,dex FROM leaderboard WHERE tg=?')
+          .bind(user.id).first();
+        const same = prev && prev.nick === nick && prev.power === power
+          && prev.badges === badges && prev.dex === dex;
+        if (!same) {
+          await env.DB.prepare('INSERT OR REPLACE INTO leaderboard(tg,nick,power,badges,dex,ts) VALUES(?,?,?,?,?,?)')
+            .bind(user.id, nick, power, badges, dex, now).run();
         }
       }
-      return json({ ok: true, pool: idx.length });
+
+      // ленивая чистка старья вместо TTL (у D1 его нет) — изредка, дёшево
+      if (Math.random() < 0.02) {
+        await env.DB.prepare('DELETE FROM teams WHERE ts < ?').bind(msAgo(SNAP_TTL)).run();
+      }
+      return json({ ok: true });
     }
 
     // --- лидерборд: топ по силе братвы (tg-id наружу не отдаём) ---
     if (url.pathname === '/leaderboard' && req.method === 'GET') {
       if (await rateLimited(env, ip)) return json({ err: 'slow down' }, 429);
-      let lb = [];
-      try { lb = JSON.parse(await env.SNAPS.get(LB_KEY)) || []; } catch (e) {}
-      return json({ top: lb.map(e => ({ nick: e.nick, power: e.power | 0, badges: e.badges | 0, dex: e.dex | 0 })) });
+      const rows = await env.DB.prepare(
+        'SELECT nick,power,badges,dex FROM leaderboard ORDER BY power DESC LIMIT ?'
+      ).bind(LB_CAP).all();
+      const top = (rows.results || []).map(e => ({ nick: e.nick, power: e.power | 0, badges: e.badges | 0, dex: e.dex | 0 }));
+      return json({ top });
     }
 
     // --- Nuzlocke: глава летописи в чат игрока (только TMA; KV не трогаем) ---
@@ -316,18 +309,12 @@ export default {
     // --- случайная чужая команда ---
     if (url.pathname === '/team/random' && req.method === 'GET') {
       const not = String(url.searchParams.get('not') || '');
-      let idx = [];
-      try { idx = JSON.parse(await env.SNAPS.get(INDEX_KEY)) || []; } catch (e) {}
-      const pool = idx.filter(i => i !== not);
-      if (!pool.length) return json({ snap: null });
-      // до 3 попыток: ключ мог истечь по TTL
-      for (let tries = 0; tries < 3 && pool.length; tries++) {
-        const k = Math.floor(Math.random() * pool.length);
-        const id = pool.splice(k, 1)[0];
-        const raw = await env.SNAPS.get('t:' + id);
-        if (raw) return json({ snap: JSON.parse(raw) });
-      }
-      return json({ snap: null });
+      // ts-фильтр заменяет TTL: старше 60 дней в выборку не попадает
+      const row = await env.DB.prepare(
+        'SELECT nick,team FROM teams WHERE id != ? AND ts > ? ORDER BY RANDOM() LIMIT 1'
+      ).bind(not, msAgo(SNAP_TTL)).first();
+      if (!row) return json({ snap: null });
+      return json({ snap: { nick: row.nick, team: JSON.parse(row.team) } });
     }
 
     // --- PvP через Telegram: создать вызов ---
@@ -346,7 +333,11 @@ export default {
         teamA: team, nonceA: String(body.nonce || '').replace(/[^a-z0-9]/gi, '').slice(0, 16) || '0',
         status: 'open', ts: Date.now(),
       };
-      await env.SNAPS.put('pvp:' + id, JSON.stringify(ch), { expirationTtl: 3 * 86400 });
+      await env.DB.prepare('INSERT OR REPLACE INTO pvp(id,data,ts) VALUES(?,?,?)')
+        .bind(id, JSON.stringify(ch), ch.ts).run();
+      if (Math.random() < 0.02) {
+        await env.DB.prepare('DELETE FROM pvp WHERE ts < ?').bind(msAgo(PVP_TTL)).run();
+      }
       return json({ id });
     }
 
@@ -357,9 +348,11 @@ export default {
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.ch);
-      const raw = await env.SNAPS.get('pvp:' + id);
-      if (!raw) return json({ err: 'not found' }, 404);
-      const ch = JSON.parse(raw);
+      // ts-фильтр заменяет TTL: вызов старше 3 дней считается несуществующим
+      const row = await env.DB.prepare('SELECT data FROM pvp WHERE id=? AND ts > ?')
+        .bind(id, msAgo(PVP_TTL)).first();
+      if (!row) return json({ err: 'not found' }, 404);
+      const ch = JSON.parse(row.data);
       const b = await buyerKey(env, body);
       let mySide = null;
       if (b.key && b.key === ch.fromKey) mySide = 'A';
@@ -380,9 +373,10 @@ export default {
       let body;
       try { body = await req.json(); } catch (e) { return json({ err: 'bad json' }, 400); }
       const id = cleanId(body.ch);
-      const raw = await env.SNAPS.get('pvp:' + id);
-      if (!raw) return json({ err: 'not found' }, 404);
-      const ch = JSON.parse(raw);
+      const row = await env.DB.prepare('SELECT data FROM pvp WHERE id=? AND ts > ?')
+        .bind(id, msAgo(PVP_TTL)).first();
+      if (!row) return json({ err: 'not found' }, 404);
+      const ch = JSON.parse(row.data);
       if (ch.status !== 'open') return json({ err: 'taken' }, 409);
       const b = await buyerKey(env, body);
       if (badBuyer(b)) return json({ err: 'bad id' }, 400);
@@ -393,7 +387,7 @@ export default {
       ch.teamB = team; ch.nonceB = String(body.nonce || '').replace(/[^a-z0-9]/gi, '').slice(0, 16) || '0';
       ch.result = (body.result === 'A' || body.result === 'B' || body.result === 'draw') ? body.result : 'draw';
       ch.status = 'done';
-      await env.SNAPS.put('pvp:' + id, JSON.stringify(ch), { expirationTtl: 3 * 86400 });
+      await env.DB.prepare('UPDATE pvp SET data=? WHERE id=?').bind(JSON.stringify(ch), id).run();
       // пуш отправителю (best-effort): бот пишет только тем, кто с ним в диалоге
       if (ch.fromTg) {
         const gameUrl = 'https://t.me/poketmons_bot?startapp=pvp' + id;

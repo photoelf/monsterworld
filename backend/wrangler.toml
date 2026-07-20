@@ -6,3 +6,9 @@ compatibility_date = "2026-07-01"
 [[kv_namespaces]]
 binding = "SNAPS"
 id = "6aa2b5ec131542dbbd2a5c6a388d63e0"
+
+# D1: горячий игровой поток (команды/лидерборд/PvP), см. backend/schema.sql
+[[d1_databases]]
+binding = "DB"
+database_name = "monsterworld"
+database_id = "e31494fb-47ab-47e9-bd12-d37edc55bb48"

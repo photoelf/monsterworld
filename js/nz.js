@@ -57,7 +57,7 @@ function nzRecalcCap(justBeatenMaster) {
   else if (justBeatenMaster) next = nzAceLevel(justBeatenMaster) + 10;
   if (next > G.nz.cap) {
     G.nz.cap = next;
-    toast('⛔ Левел-кап поднят до ' + next + '! Братва может расти.');
+    toast('⛔ Макс. лвл поднят до ' + next + '! Братва может расти.');
   }
 }
 
