@@ -185,6 +185,7 @@ const Battle = {
   setupScene(foe) {
     const cv = this.el('bt-tcanvas');
     const sheet = foe === 'master' ? (typeof masterSprite !== 'undefined' && masterSprite)
+               : foe === 'tower' ? (typeof towerSprite !== 'undefined' && towerSprite)
                : foe === 'trainer' ? (typeof trainerSprite !== 'undefined' && trainerSprite)
                : null;
     if (!sheet) { cv.classList.add('hidden'); return; }

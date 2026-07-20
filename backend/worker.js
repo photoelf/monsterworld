@@ -93,7 +93,7 @@ const ACC_PRICES = {
   ghostpal: 4, shroom: 4, robohelm: 4,
   crown: 5, spartan: 5,
   // костюмы и принты на футболку
-  kimono: 2, tracksuit: 3, labcoat: 4, vault: 4, tux: 5, armor: 5,
+  kimono: 2, tracksuit: 3, balahon: 3, labcoat: 4, vault: 4, tux: 5, armor: 5,
   printheart: 1, printinvader: 2,
 };
 const ACC_NAMES = {
@@ -104,7 +104,7 @@ const ACC_NAMES = {
   ghostpal: 'Призрачный кореш', shroom: 'Грибная шляпа',
   robohelm: 'Шлем робобойца', crown: 'Корона',
   spartan: 'Шлем спартанца',
-  kimono: 'Кимоно бойца', tracksuit: 'Спортивка братана', labcoat: 'Халат профессора',
+  kimono: 'Кимоно бойца', tracksuit: 'Спортивка братана', balahon: 'Чёрный балахон', labcoat: 'Халат профессора',
   vault: 'Комбез убежища', tux: 'Смокинг агента', armor: 'Силовая броня',
   printheart: 'Принт «сердце»', printinvader: 'Принт «пришелец»',
 };

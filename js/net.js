@@ -296,7 +296,7 @@ const ACC_PRICES = {
   ghostpal: 4, shroom: 4, robohelm: 4,
   crown: 5, spartan: 5,
   // костюмы и принты на футболку
-  kimono: 2, tracksuit: 3, labcoat: 4, vault: 4, tux: 5, armor: 5,
+  kimono: 2, tracksuit: 3, balahon: 3, labcoat: 4, vault: 4, tux: 5, armor: 5,
   printheart: 1, printinvader: 2,
 };
 

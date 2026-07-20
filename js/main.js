@@ -298,6 +298,18 @@ const OUTFIT_ACCS = {
     if (d === 'down') { r(L, 6, 8, 4, 1); r('#e8c95a', 7, 9, 2, 1); }
     else if (d === 'up') r(L, 6, 8, 4, 1);
   } },
+  // балахон смотрителя башни: роба + глухой чёрный капюшон (одна вещь, слот костюма)
+  balahon: { name: '🥷 Чёрный балахон', draw(r, d) {
+    const K = '#16161e';
+    // роба поверх тела с рукавами (ноги не перекрывать — там анимация ходьбы)
+    r(K, 4, 7, 8, 5); r(K, 3, 8, 1, 3); r(K, 12, 8, 1, 3);
+    // капюшон: глухая макушка, лицо остаётся в проёме
+    r(K, 4, 0, 8, 3);
+    if (d === 'up') r(K, 4, 3, 8, 4);                          // со спины — сплошной
+    else if (d === 'left') { r(K, 4, 3, 1, 3); r(K, 9, 3, 3, 4); }
+    else if (d === 'right') { r(K, 4, 3, 3, 4); r(K, 11, 3, 1, 3); }
+    else { r(K, 4, 3, 1, 4); r(K, 11, 3, 1, 4); }              // анфас — боковины
+  } },
   // ----- Принты на футболке (слот print): видны спереди, костюм рисуется поверх -----
   printheart: { name: '💗 Принт «сердце»', draw(r, d) {
     if (d !== 'down') return;
@@ -314,7 +326,7 @@ const OUTFIT_ACCS = {
 // Слоты: одна вещь на слот, шапка+очки+костюм+принт носятся одновременно
 const ACC_SLOTS = {
   glasses: 'glasses', anaglyph: 'glasses', redvisor: 'glasses',
-  kimono: 'costume', tracksuit: 'costume', labcoat: 'costume', vault: 'costume', tux: 'costume', armor: 'costume',
+  kimono: 'costume', tracksuit: 'costume', labcoat: 'costume', vault: 'costume', tux: 'costume', armor: 'costume', balahon: 'costume',
   printheart: 'print', printinvader: 'print',
 };
 const accSlot = k => ACC_SLOTS[k] || 'head';
@@ -382,7 +394,7 @@ function applyOutfit() {
     { glasses: val('glasses', 'glasses'), costume: val('costume', 'costume'), print: val('print', 'print') });
 }
 
-let playerSprite = null, trainerSprite = null, masterSprite = null, traderSprite = null;
+let playerSprite = null, trainerSprite = null, masterSprite = null, traderSprite = null, towerSprite = null;
 const DIR_INDEX = { down: 0, up: 1, left: 2, right: 3 };
 
 // ===== HUD и всплывашки =====
@@ -406,7 +418,8 @@ function updateHUD() {
       !(typeof grindUnlocked !== 'undefined' && grindUnlocked && (GRIND_ON || grindZoneAt(px, py))));
   }
   s.innerHTML = '🔮 <b>' + ballsTotal(G.balls) + '</b> · 💰 <b>' + G.money + '₴</b> · 🏅 <b>' + G.badges.length +
-    '</b> · 🏆 <b>' + G.achievements.size + '</b> · ' + PHASE_ICON[G.phase] + (G.weather === 'rain' ? '☔' : '') + '<br>' +
+    '</b> · 🏆 <b>' + G.achievements.size + '</b> · ' + PHASE_ICON[G.phase] +
+    (G.weather === 'rain' ? (World.climateAt(px, py) === 'cold' ? '❄️' : '☔') : '') + '<br>' +
     '<span style="opacity:.7">📕 ' + G.dex.caught.size + '/' + G.dex.seen.size +
     (G.egg ? ' · 🥚 ' + G.egg.steps : '') +
     (G.quest ? ' · 📋 ' + G.quest.progress + '/' + G.quest.need : '') +
@@ -899,7 +912,7 @@ async function startTowerRun(tw) {
   while (true) {
     const team = World.towerTeam(tw, floor);
     result = await Battle.run({
-      kind: 'trainer', enemyParty: team,
+      kind: 'trainer', enemyParty: team, foe: 'tower',
       trainerName: 'Смотритель этажа ' + floor,
       reward: 40 + floor * 35,
     });
@@ -1828,7 +1841,11 @@ function step(dt) {
   const newPhase = calcPhase();
   const newWeather = World.weatherAt(Math.floor(G.player.x), Math.floor(G.player.y), G.clock);
   if (newPhase !== G.phase || newWeather !== G.weather) {
-    if (newWeather === 'rain' && G.weather !== 'rain') toast('☔ Начинается дождь — водная братва оживилась!');
+    // в холодном климате те же осадки рисуются снегом — текст не должен врать про дождь
+    if (newWeather === 'rain' && G.weather !== 'rain') {
+      const coldHere = World.climateAt(Math.floor(G.player.x), Math.floor(G.player.y)) === 'cold';
+      toast(coldHere ? '❄️ Начинается снегопад — братва ёжится от холода!' : '☔ Начинается дождь — водная братва оживилась!');
+    }
     if (newPhase === 'night' && G.phase !== 'night') toast('🌙 Наступает ночь — в траве шуршат тёмные твари...');
     G.phase = newPhase;
     G.weather = newWeather;
@@ -4072,6 +4089,8 @@ function main() {
   trainerSprite = makePersonSprite('#3a6ab0', '#2a2a38');
   masterSprite = makePersonSprite('#d8a018', '#f0f0f0');
   traderSprite = makePersonSprite('#3a9a50', '#5a3a1e');
+  // смотритель башни — человек в чёрном балахоне (та же вещь продаётся в Магазине стиля)
+  towerSprite = makePersonSprite('#16161e', '#16161e', null, '#c8a888', { costume: 'balahon' });
   initInput();
   initTitle();
   initTouch();
