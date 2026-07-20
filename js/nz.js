@@ -149,6 +149,8 @@ function nzGameOver() {
     'Поимок: ' + s.catches + ' · Смертей: ' + s.deaths + ' · Лидеров бито: ' + s.leaders + ' · Боёв: ' + s.battles;
   document.getElementById('nzover-text').textContent = story;
   document.getElementById('nzover-panel').classList.remove('hidden');
+  _nzChapterTs = 0;   // блэкаут пробивает троттлинг — предыдущая смерть могла быть <30с назад
+  nzChapter('Полный блэкаут — ран окончен');
   saveGame();
 }
 
@@ -210,6 +212,7 @@ function nzAfterWild(enc, wild, result) {
     wild.nzCaughtLvl = wild.level;
     nzForceNick(wild);
     nzLog('name', { sp: wild.speciesSeed, nick: wild.nick });
+    if (G.nz.stats.catches === 1) nzChapter('Первая поимка рана');
   }
   saveGame();
 }
@@ -258,6 +261,7 @@ function nzBury(m) {
   G.nz.stats.deaths++;
   nzLog('death', { nick: monName(m), sp: m.speciesSeed, lvl: m.level,
     killer: m.nzKiller || 'неизвестный злодей', place: m.nzPlace || 'дикие места' });
+  nzChapter('Потеря: ' + monName(m));
 }
 
 // Общий пост-боевой обряд. true = блэкаут (вызывающий afterBattle прерывается).
@@ -283,6 +287,47 @@ function nzAfterBattle(result) {
     toast('Из кармана подтягивается подмога. Держитесь, братья.');
   }
   return false;
+}
+
+// «Открытка» главы: тёмный фон, спрайты живой братвы, заголовок, счёт могил
+function nzPostcard(title) {
+  const W = 480, H = 270;
+  const cv = document.createElement('canvas');
+  cv.width = W; cv.height = H;
+  const c = cv.getContext('2d');
+  const grad = c.createLinearGradient(0, 0, 0, H);
+  grad.addColorStop(0, '#141420'); grad.addColorStop(1, '#0d0d14');
+  c.fillStyle = grad; c.fillRect(0, 0, W, H);
+  c.imageSmoothingEnabled = false;
+  const alive = G.party.filter(m => m.hp > 0).slice(0, 6);
+  alive.forEach((m, i) => {
+    const spr = monSprite(m);
+    const size = 56;
+    const x = 40 + i * 66, y = H - 118;
+    c.drawImage(spr, x, y, size, size);
+    c.fillStyle = '#e8e8f0'; c.font = '11px monospace'; c.textAlign = 'center';
+    c.fillText((monName(m) || '').slice(0, 9), x + size / 2, y + size + 14);
+  });
+  c.fillStyle = '#ffd75e'; c.font = 'bold 20px monospace'; c.textAlign = 'left';
+  c.fillText('☠️ NUZLOCKE', 16, 34);
+  c.fillStyle = '#e8e8f0'; c.font = '15px monospace';
+  c.fillText(String(title).slice(0, 44), 16, 62);
+  c.fillStyle = '#8888a0'; c.font = '12px monospace';
+  c.fillText('могил: ' + G.nz.graveyard.length + ' · поимок: ' + G.nz.stats.catches + ' · кап: ' + nzCap(), 16, H - 16);
+  return cv.toDataURL('image/jpeg', 0.7);
+}
+
+// Глава-майлстон в чат (только TMA, тумблер mw-nz-chapters, не чаще раза в 30с)
+let _nzChapterTs = 0;
+function nzChapter(title) {
+  if (!NZ() || typeof IS_TMA === 'undefined' || !IS_TMA) return;
+  try { if (localStorage.getItem('mw-nz-chapters') === '0') return; } catch (e) {}
+  if (Date.now() - _nzChapterTs < 30000) return;
+  _nzChapterTs = Date.now();
+  let photo = null;
+  try { photo = nzPostcard(title); } catch (e) {}
+  const tail = G.nz.log.slice(-3).map(nzLogText).join('\n\n');
+  netNzChapter('📜 ' + title + '\n\n' + tail, photo);
 }
 
 // Кладбище: грейскейл-спрайты и эпитафии; сортировка и кнопки Кармана скрыты

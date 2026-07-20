@@ -904,6 +904,7 @@ async function startArenaBattle(master) {
       G.nz.stats.leaders++;
       nzLog('leader', { name: master.name, ace: nzAceLevel(master) });
       nzRecalcCap(master);
+      nzChapter('Лидер повержен: ' + master.name);
     }
   }
   afterBattle(result);
@@ -3271,6 +3272,21 @@ function renderSettings() {
     scootBtn.onclick = () => { G.scootOn = !G.scootOn; saveGame(); updateHUD(); renderSettings(); };
   } else {
     scootBtn.style.display = 'none';
+  }
+
+  // тумблер глав летописи в чат бота — только в NZ и в Telegram (нужен BOT_TOKEN/чат)
+  const nzChapBtn = document.getElementById('set-nzchapters');
+  if (NZ() && IS_TMA) {
+    nzChapBtn.style.display = '';
+    let nzChapOn = true;
+    try { nzChapOn = localStorage.getItem('mw-nz-chapters') !== '0'; } catch (e) {}
+    nzChapBtn.textContent = nzChapOn ? '📖 Главы в чат: вкл' : '📖 Главы в чат: выкл';
+    nzChapBtn.onclick = () => {
+      try { localStorage.setItem('mw-nz-chapters', nzChapOn ? '0' : '1'); } catch (e) {}
+      renderSettings();
+    };
+  } else {
+    nzChapBtn.style.display = 'none';
   }
   const urlForce = /[?&](desktop|mobile)/.test(location.search);
   const note = document.getElementById('set-mode-note');
