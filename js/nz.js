@@ -30,8 +30,33 @@ function nzLog(kind, data) {
   G.nz.log.push(Object.assign({ t: Date.now(), k: kind }, data || {}));
 }
 
-// Временная заглушка — заменится в Task 5 (экран итогов рана).
-function nzGameOver() { toast('Ран окончен.'); }
+// Временная заглушка — заменится в Task 8 (полная летопись рана).
+function nzFullStory() { return 'Летопись пишется...'; }
+
+// Блэкаут: вся братва и карман мертвы. Ран завершён навсегда.
+function nzGameOver() {
+  G.nz.over = true;
+  if (!G.nz.log.some(e => e.k === 'blackout')) nzLog('blackout', {});
+  const story = nzFullStory();
+  try { localStorage.setItem('mw-nz-lastrun', story); } catch (e) {}
+  G.state = 'nzover';
+  const s = G.nz.stats;
+  document.getElementById('nzover-stats').textContent =
+    'Поимок: ' + s.catches + ' · Смертей: ' + s.deaths + ' · Лидеров бито: ' + s.leaders + ' · Боёв: ' + s.battles;
+  document.getElementById('nzover-text').textContent = story;
+  document.getElementById('nzover-panel').classList.remove('hidden');
+  saveGame();
+}
+
+// Стереть NZ-слот (локально + облако) и вернуться на титул
+function nzWipeRun() {
+  try { localStorage.removeItem(SAVE_KEY_NZ); } catch (e) {}
+  if (typeof nzCloudWipe === 'function') nzCloudWipe();
+  document.getElementById('nzover-panel').classList.add('hidden');
+  document.getElementById('btn-continue-nz').classList.add('hidden');
+  setSaveSlot('main');
+  location.reload();   // чистый старт с титула — надёжнее ручного сброса G
+}
 
 // «Область» = Вороной-ячейка ЖИВОГО города: мёртвые ячейки (центр в воде)
 // детерминированно прилипают к ближайшему живому центру. Имя и id — как у

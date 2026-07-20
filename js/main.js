@@ -4341,6 +4341,13 @@ function initTitle() {
     try { navigator.clipboard.writeText(ta.value); } catch (e) { document.execCommand('copy'); }
     toast('Код скопирован!');
   };
+  document.getElementById('btn-nzover-share').onclick = () => {
+    const t = document.getElementById('nzover-text').textContent;
+    try { navigator.clipboard.writeText(t); toast('📋 Летопись скопирована!'); }
+    catch (e) { toast('Не вышло скопировать — выдели текст пальцем.'); }
+  };
+  document.getElementById('btn-nzover-restart').onclick = () => nzWipeRun();
+
   document.getElementById('btn-import').onclick = () => {
     const code = document.getElementById('import-code').value;
     const r = importSaveCode(code);

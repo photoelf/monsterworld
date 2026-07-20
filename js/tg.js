@@ -182,6 +182,21 @@ async function cloudSyncOnLaunch() {
   }
 }
 
+// Стереть облачные чанки Nuzlocke-слота (после блэкаута)
+function nzCloudWipe() {
+  if (!IS_TMA || !TG.CloudStorage) return;
+  cloudDownload('nz').then(() => {
+    // meta знает число чанков; сносим с запасом
+    csGet('nz_meta').then(raw => {
+      let n = 12;
+      try { n = Math.max(12, (JSON.parse(raw).n | 0) + 2); } catch (e) {}
+      const keys = ['nz_meta', 'nz_meta_prev'];
+      for (let i = 0; i < n; i++) keys.push('nz_' + i);
+      csRemove(keys).catch(() => {});
+    }).catch(() => {});
+  }).catch(() => {});
+}
+
 // ===== Регистрация: ник игрока =====
 
 async function ensureRegistration() {
