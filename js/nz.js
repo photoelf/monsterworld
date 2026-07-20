@@ -49,9 +49,9 @@ function nzGameOver() {
 }
 
 // Стереть NZ-слот (локально + облако) и вернуться на титул
-function nzWipeRun() {
+async function nzWipeRun() {
   try { localStorage.removeItem(SAVE_KEY_NZ); } catch (e) {}
-  if (typeof nzCloudWipe === 'function') nzCloudWipe();
+  if (typeof nzCloudWipe === 'function') { try { await nzCloudWipe(); } catch (e) {} }
   document.getElementById('nzover-panel').classList.add('hidden');
   document.getElementById('btn-continue-nz').classList.add('hidden');
   setSaveSlot('main');

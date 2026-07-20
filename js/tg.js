@@ -182,19 +182,17 @@ async function cloudSyncOnLaunch() {
   }
 }
 
-// Стереть облачные чанки Nuzlocke-слота (после блэкаута)
-function nzCloudWipe() {
+// Стереть облачные чанки Nuzlocke-слота (после блэкаута). Возвращает Promise,
+// который резолвится ПОСЛЕ реального удаления — вызывающий обязан дождаться
+// его перед location.reload(), иначе запрос на удаление не успевает уйти
+// в сеть и стёртый ран «воскресает» из облака при следующем cloudSyncOnLaunch.
+async function nzCloudWipe() {
   if (!IS_TMA || !TG.CloudStorage) return;
-  cloudDownload('nz').then(() => {
-    // meta знает число чанков; сносим с запасом
-    csGet('nz_meta').then(raw => {
-      let n = 12;
-      try { n = Math.max(12, (JSON.parse(raw).n | 0) + 2); } catch (e) {}
-      const keys = ['nz_meta', 'nz_meta_prev'];
-      for (let i = 0; i < n; i++) keys.push('nz_' + i);
-      csRemove(keys).catch(() => {});
-    }).catch(() => {});
-  }).catch(() => {});
+  let n = 12;
+  try { n = Math.max(12, (JSON.parse(await csGet('nz_meta')).n | 0) + 2); } catch (e) {}
+  const keys = ['nz_meta', 'nz_meta_prev'];
+  for (let i = 0; i < n; i++) keys.push('nz_' + i);
+  try { await csRemove(keys); } catch (e) {}
 }
 
 // ===== Регистрация: ник игрока =====
