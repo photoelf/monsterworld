@@ -523,15 +523,15 @@
   <!-- Карта -->
   <div id="map-panel" class="overlay hidden">
     <h1 style="font-size:22px;">Карта окрестностей</h1>
+    <div style="display:flex; gap:10px;">
+      <button id="btn-export">📋 Код сейва</button>
+      <button id="btn-map-close">Закрыть (M)</button>
+    </div>
     <canvas id="map-canvas" width="720" height="480"></canvas>
     <div id="map-legend" style="font-size:12px;opacity:.8;">
       ⛲ синее — фонтаны · 🟨 песочное — арены · 🟥 красное — лавки · ✚ — ты
     </div>
     <div id="map-travel-wrap"><div id="map-travel"></div></div>
-    <div style="display:flex; gap:10px;">
-      <button id="btn-export">📋 Код сейва</button>
-      <button id="btn-map-close">Закрыть (M)</button>
-    </div>
   </div>
 
   <!-- Код сейва -->

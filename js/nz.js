@@ -179,7 +179,7 @@ function nzGameOver() {
   document.getElementById('nzover-text').textContent = story;
   document.getElementById('nzover-panel').classList.remove('hidden');
   _nzChapterTs = 0;   // блэкаут пробивает троттлинг — предыдущая смерть могла быть <30с назад
-  nzChapter('Полный блэкаут — ран окончен');
+  nzChapter('Полный блэкаут — ран окончен', 'blackout');
   saveGame();
 }
 
@@ -252,7 +252,7 @@ function nzAfterWild(enc, wild, result) {
     wild.nzCaughtLvl = wild.level;
     nzForceNick(wild);
     nzLog('name', { sp: wild.speciesSeed, nick: wild.nick });
-    if (G.nz.stats.catches === 1) nzChapter('Первая поимка рана');
+    if (G.nz.stats.catches === 1) nzChapter('Первая поимка рана', 'catch', wild);
   }
   saveGame();
 }
@@ -311,7 +311,7 @@ function nzBury(m) {
   G.nz.stats.deaths++;
   nzLog('death', { nick: monName(m), sp: m.speciesSeed, lvl: m.level,
     killer: m.nzKiller || 'неизвестный злодей', place: m.nzPlace || 'дикие места' });
-  nzChapter('Потеря: ' + monName(m));
+  nzChapter('Потеря: ' + monName(m), 'death', m);
 }
 
 // Общий пост-боевой обряд. true = блэкаут (вызывающий afterBattle прерывается).
@@ -339,43 +339,114 @@ function nzAfterBattle(result) {
   return false;
 }
 
-// «Открытка» главы: тёмный фон, спрайты живой братвы, заголовок, счёт могил
-function nzPostcard(title) {
+// Крупный спрайт братишки по центру (cx,cy), пиксель-арт без сглаживания,
+// вписан в квадрат box — общий масштаб для процедурных и кастомных спрайтов
+// (monSpriteDims уже нормализует оба случая к сопоставимому логическому размеру).
+function nzDrawMonBig(c, m, cx, cy, box) {
+  const spr = monSprite(m);
+  const d = monSpriteDims(m, spr);
+  const scale = box / Math.max(d.w, d.h);
+  const w = Math.round(d.w * scale), h = Math.round(d.h * scale);
+  c.drawImage(spr, Math.round(cx - w / 2), Math.round(cy - h / 2), w, h);
+}
+
+// «Открытка» главы: оформление зависит от события, а не только текст —
+// новый брат (крупный спрайт + искры), потеря (тот же спрайт в серости под
+// плитой), лидер (спрайт тренера + кубок), блэкаут (последний павший, если
+// есть). kind не задан → старый фоллбэк: превью живой команды.
+function nzPostcard(title, kind, payload) {
   const W = 480, H = 270;
   const cv = document.createElement('canvas');
   cv.width = W; cv.height = H;
   const c = cv.getContext('2d');
-  const grad = c.createLinearGradient(0, 0, 0, H);
-  grad.addColorStop(0, '#141420'); grad.addColorStop(1, '#0d0d14');
-  c.fillStyle = grad; c.fillRect(0, 0, W, H);
   c.imageSmoothingEnabled = false;
-  const alive = G.party.filter(m => m.hp > 0).slice(0, 6);
-  alive.forEach((m, i) => {
-    const spr = monSprite(m);
-    const size = 56;
-    const x = 40 + i * 66, y = H - 118;
-    c.drawImage(spr, x, y, size, size);
-    c.fillStyle = '#e8e8f0'; c.font = '11px monospace'; c.textAlign = 'center';
-    c.fillText((monName(m) || '').slice(0, 9), x + size / 2, y + size + 14);
-  });
-  c.fillStyle = '#ffd75e'; c.font = 'bold 20px monospace'; c.textAlign = 'left';
-  c.fillText('☠️ NUZLOCKE', 16, 34);
-  c.fillStyle = '#e8e8f0'; c.font = '15px monospace';
-  c.fillText(String(title).slice(0, 44), 16, 62);
-  c.fillStyle = '#8888a0'; c.font = '12px monospace';
+
+  const grad = c.createLinearGradient(0, 0, 0, H);
+  if (kind === 'catch') { grad.addColorStop(0, '#1c3320'); grad.addColorStop(1, '#0d1a0f'); }
+  else if (kind === 'death') { grad.addColorStop(0, '#2a1418'); grad.addColorStop(1, '#0d0808'); }
+  else if (kind === 'leader') { grad.addColorStop(0, '#2a2010'); grad.addColorStop(1, '#141008'); }
+  else if (kind === 'blackout') { grad.addColorStop(0, '#1a0a0a'); grad.addColorStop(1, '#050505'); }
+  else { grad.addColorStop(0, '#141420'); grad.addColorStop(1, '#0d0d14'); }
+  c.fillStyle = grad; c.fillRect(0, 0, W, H);
+
+  c.fillStyle = '#ffd75e'; c.font = 'bold 15px monospace'; c.textAlign = 'left';
+  c.fillText('☠️ NUZLOCKE', 16, 26);
+  c.textAlign = 'center';
+
+  if (kind === 'catch' && payload) {
+    const m = payload;
+    nzDrawMonBig(c, m, W / 2, 118, 128);
+    c.font = '22px sans-serif'; c.fillText('✨', W / 2 - 92, 70); c.fillText('✨', W / 2 + 90, 100);
+    c.fillStyle = '#ffe9a8'; c.font = 'bold 20px monospace';
+    c.fillText('🎉 Новый брат в семье!', W / 2, 198);
+    c.fillStyle = '#e8e8f0'; c.font = '15px monospace';
+    c.fillText(monName(m) + ' · ' + m.level + ' ур.', W / 2, 222);
+  } else if (kind === 'death' && payload) {
+    const m = payload;
+    c.filter = 'grayscale(1) brightness(.65)';
+    nzDrawMonBig(c, m, W / 2, 116, 118);
+    c.filter = 'none';
+    c.font = '30px sans-serif'; c.fillText('🪦', W / 2 + 84, 168);
+    c.fillStyle = '#ff9a9a'; c.font = 'bold 20px monospace';
+    c.fillText('⚰️ Потеря', W / 2, 200);
+    c.fillStyle = '#e8e8f0'; c.font = '14px monospace';
+    c.fillText(monName(m) + ' · ' + (m.nzCaughtLvl || 1) + '→' + m.level + ' ур.', W / 2, 222);
+    c.fillStyle = '#c88888'; c.font = '12px monospace';
+    c.fillText(('Убийца: ' + (m.nzKiller || 'неизвестный злодей')).slice(0, 44), W / 2, 240);
+  } else if (kind === 'leader' && payload) {
+    const master = payload;
+    if (typeof masterSprite !== 'undefined' && masterSprite) {
+      c.drawImage(masterSprite, 0, 0, 16, 16, W / 2 - 48, 62, 96, 96);
+    }
+    c.font = '38px sans-serif'; c.fillText('🏆', W / 2 + 58, 90);
+    c.fillStyle = '#ffd75e'; c.font = 'bold 20px monospace';
+    c.fillText('Лидер повержен!', W / 2, 198);
+    c.fillStyle = '#e8e8f0'; c.font = '15px monospace';
+    c.fillText(String(master.name || '').slice(0, 30), W / 2, 222);
+  } else if (kind === 'blackout') {
+    const last = G.nz.graveyard[G.nz.graveyard.length - 1];
+    if (last) {
+      const m = reviveOwnedMon(last.mon);
+      c.filter = 'grayscale(1) brightness(.5)';
+      nzDrawMonBig(c, m, W / 2, 104, 104);
+      c.filter = 'none';
+    }
+    c.font = '34px sans-serif'; c.fillText('☠️', W / 2, last ? 56 : 130);
+    c.fillStyle = '#ff6a6a'; c.font = 'bold 22px monospace';
+    c.fillText('ПОЛНЫЙ БЛЭКАУТ', W / 2, 190);
+    c.fillStyle = '#e8e8f0'; c.font = '13px monospace';
+    c.fillText('Ран окончен · могил: ' + G.nz.graveyard.length, W / 2, 214);
+  } else {
+    // фоллбэк — превью живой команды (как было изначально)
+    c.textAlign = 'left';
+    c.fillStyle = '#e8e8f0'; c.font = '15px monospace';
+    c.fillText(String(title).slice(0, 44), 16, 56);
+    c.textAlign = 'center';
+    const alive = G.party.filter(m => m.hp > 0).slice(0, 6);
+    alive.forEach((m, i) => {
+      const spr = monSprite(m);
+      const size = 56;
+      const x = 40 + i * 66, y = H - 118;
+      c.drawImage(spr, x, y, size, size);
+      c.fillStyle = '#e8e8f0'; c.font = '11px monospace';
+      c.fillText((monName(m) || '').slice(0, 9), x + size / 2, y + size + 14);
+    });
+  }
+
+  c.fillStyle = '#8888a0'; c.font = '12px monospace'; c.textAlign = 'left';
   c.fillText('могил: ' + G.nz.graveyard.length + ' · поимок: ' + G.nz.stats.catches + ' · кап: ' + nzCap(), 16, H - 16);
   return cv.toDataURL('image/jpeg', 0.7);
 }
 
 // Глава-майлстон в чат (только TMA, тумблер mw-nz-chapters, не чаще раза в 30с)
 let _nzChapterTs = 0;
-function nzChapter(title) {
+function nzChapter(title, kind, payload) {
   if (!NZ() || typeof IS_TMA === 'undefined' || !IS_TMA) return;
   try { if (localStorage.getItem('mw-nz-chapters') === '0') return; } catch (e) {}
   if (Date.now() - _nzChapterTs < 30000) return;
   _nzChapterTs = Date.now();
   let photo = null;
-  try { photo = nzPostcard(title); } catch (e) {}
+  try { photo = nzPostcard(title, kind, payload); } catch (e) {}
   const tail = G.nz.log.slice(-3).map(nzLogText).join('\n\n');
   netNzChapter('📜 ' + title + '\n\n' + tail, photo);
 }

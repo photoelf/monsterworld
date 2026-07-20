@@ -916,7 +916,7 @@ async function startArenaBattle(master) {
       G.nz.stats.leaders++;
       nzLog('leader', { name: master.name, ace: nzAceLevel(master) });
       nzRecalcCap(master);
-      nzChapter('Лидер повержен: ' + master.name);
+      nzChapter('Лидер повержен: ' + master.name, 'leader', master);
     }
   }
   afterBattle(result);
@@ -2737,7 +2737,14 @@ function renderMap() {
     const b = document.createElement('button');
     // в каждом городе ровно один фонтан — подписываем именем города, 1 км = 10 тайлов
     const city = World.cityInfoAt(f.x, f.y);
-    b.textContent = '⛲ ' + (city ? city.name : 'Дикие места') + ' · ' + (dist / 10).toFixed(1) + ' км';
+    // арена всегда в центре городского квартала (city.x/y уже привязаны к нему) —
+    // сразу видно уровень лидера и бит ли он, не тыкаясь в каждый город по очереди
+    const master = city ? World.arenaMasterAt(city.x, city.y) : null;
+    const beaten = master && G.badges.includes(master.id);
+    let label = '⛲ ' + (city ? city.name : 'Дикие места') + ' · ' + (dist / 10).toFixed(1) + ' км';
+    if (master) label += ' · 🏅ур.' + master.level + (beaten ? ' ✅' : ' ⚔️');
+    b.textContent = label;
+    b.style.opacity = beaten ? '.55' : '';
     b.onclick = () => travelToFountain(f);
     travel.appendChild(b);
   }
