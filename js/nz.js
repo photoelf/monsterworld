@@ -1,17 +1,23 @@
 'use strict';
 
 // ===== Nuzlocke-режим («☠️ Nuzlocke») =====
-// Хардкорный режим в отдельном слоте сейва. Правила: пермасмерть, одна поимка
-// на «область» (Вороной-ячейка города), обязательные клички, левел-кап,
+// Хардкорный режим в отдельном слоте сейва. Правила: пермасмерть, до NZ_ZONE_CATCHES
+// поимок на «область» (Вороной-ячейка города), обязательные клички, левел-кап,
 // запрет предметов в бою, скорость ×0.5, спавн диких ×0.3, летопись рана.
 // Спека: docs/superpowers/specs/2026-07-20-nuzlocke-design.md
 
 function NZ() { return !!(typeof G !== 'undefined' && G && G.nuzlocke); }
 
+// Сколько диких братишек можно поймать в одной области, прежде чем она
+// исчерпается (стандартный Nuzlocke-ран даёт игроку 3-5 поимок, включая
+// стартера, до первого джима — у нас арена в шаговой доступности от старта,
+// поэтому 4 поимки на область компенсируют разницу и не душат старт рана).
+const NZ_ZONE_CATCHES = 4;
+
 function nzFreshState() {
   return {
     cap: 15,        // левел-кап; растёт победами над лидерами (nzRecalcCap)
-    zones: {},      // zoneId -> 'used' (нет ключа = встреча области доступна)
+    zones: {},      // zoneId -> число уже потраченных поимок области (0..NZ_ZONE_CATCHES)
     lineages: [],   // speciesSeed пойманных эво-линий (Dupes Clause)
     graveyard: [],  // павшие: {mon, caughtLvl, diedLvl, battles, killer, place, ts}
     log: [],        // события летописи {t, k, ...} — текст генерится при рендере
@@ -125,15 +131,23 @@ function nzCloseLog() {
 function nzApplyMenuMode() {
   const ach = document.querySelector('#touch-menu .tbtn[data-panel="ach"], #touch-menu .tbtn[data-panel="nzlog"]');
   const friend = document.querySelector('#touch-menu .tbtn[data-panel="friend"]');
-  if (!ach || !friend) return;
-  if (NZ()) {
-    ach.dataset.panel = 'nzlog';
-    ach.textContent = '📜';
-    friend.classList.add('hidden');
-  } else {
-    ach.dataset.panel = 'ach';
-    ach.textContent = '🏆';
-    friend.classList.remove('hidden');
+  const legend = document.getElementById('hint');
+  if (ach && friend) {
+    if (NZ()) {
+      ach.dataset.panel = 'nzlog';
+      ach.textContent = '📜';
+      friend.classList.add('hidden');
+    } else {
+      ach.dataset.panel = 'ach';
+      ach.textContent = '🏆';
+      friend.classList.remove('hidden');
+    }
+  }
+  // десктопная легенда клавиш: в NZ нет обмена/PvP, «O» открывает Летопись
+  if (legend) {
+    legend.textContent = NZ()
+      ? 'WASD · Shift — бег · Tab — братва · I — инвентарь · B — карман · M — карта · P — педия · O — летопись'
+      : 'WASD · Shift — бег · Tab — братва · I — инвентарь · B — карман · M — карта · P — педия · O — награды · T — обмен/PvP';
   }
 }
 
@@ -188,11 +202,22 @@ function nzZoneAt(x, y) {
   return best;
 }
 
+// Сколько поимок в области уже потрачено (0..NZ_ZONE_CATCHES)
+function nzZoneUsed(zoneId) { return G.nz.zones[zoneId] || 0; }
+
+// Короткая метка статуса области для HUD/карты: «✔» на исчерпанной,
+// иначе «🎯 N/M» — сколько поимок ещё доступно
+function nzZoneStatusLabel(zoneId) {
+  const used = nzZoneUsed(zoneId);
+  return used >= NZ_ZONE_CATCHES ? '✔' : '🎯' + used + '/' + NZ_ZONE_CATCHES;
+}
+
 // Статус дикого боя по правилам Nuzlocke (вызывается ДО Battle.run)
 function nzEncounterInfo(x, y, wild) {
   const zone = nzZoneAt(x, y);
   if (wild.shiny) return { zone, kind: 'shiny', catch: { ok: true } };            // Shiny Clause
-  if (G.nz.zones[zone.id]) return { zone, kind: 'used', catch: { ok: false, why: 'встреча области уже была' } };
+  if (nzZoneUsed(zone.id) >= NZ_ZONE_CATCHES)
+    return { zone, kind: 'used', catch: { ok: false, why: 'лимит поимок области исчерпан (' + NZ_ZONE_CATCHES + '/' + NZ_ZONE_CATCHES + ')' } };
   if (G.nz.lineages.includes(wild.speciesSeed))
     return { zone, kind: 'dupe', catch: { ok: false, why: 'такой уже есть в семье' } };  // Dupes Clause
   return { zone, kind: 'enc', catch: { ok: true } };
@@ -202,7 +227,7 @@ function nzEncounterInfo(x, y, wild) {
 function nzAfterWild(enc, wild, result) {
   if (!NZ() || !enc) return;
   if (enc.kind === 'enc') {
-    G.nz.zones[enc.zone.id] = 'used';
+    G.nz.zones[enc.zone.id] = nzZoneUsed(enc.zone.id) + 1;
     nzLog('meet', { sp: wild.speciesSeed, st: wild.stage, lvl: wild.level, zn: enc.zone.name,
       out: result === 'caught' ? 'c' : result === 'run' ? 'r' : result === 'lose' ? 'l' : 'k' });
   }
@@ -215,6 +240,16 @@ function nzAfterWild(enc, wild, result) {
     if (G.nz.stats.catches === 1) nzChapter('Первая поимка рана');
   }
   saveGame();
+}
+
+// Показать состав команды тренера/лидера перед боем и спросить подтверждение —
+// без этого permadeath-бой начинался бы вслепую (случайный «живой» соперник или
+// неизвестная команда, в отличие от классических игр серии, где расстановку
+// боец знал заранее). Native confirm() безопасен: зовётся из step() (мир), ДО
+// старта Battle.run — тот же паттерн, что и подтверждение входа в башню.
+function nzConfirmBattle(name, team) {
+  const lines = team.map(m => TYPE_INFO[monType(m)].ru + ' ' + monSpeciesName(m) + ' (' + m.level + ' ур.)').join('\n');
+  return confirm('⚔️ ' + name + '\n' + lines + '\n\nВызвать на бой?');
 }
 
 // Кличка обязательна (боевой экран уже закрыт — нативный prompt безопасен)

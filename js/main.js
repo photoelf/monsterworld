@@ -440,8 +440,8 @@ function updateHUD() {
     ' · x:' + px + ' y:' + py + ' · ур. диких ~' + World.levelAt(px, py) +
     (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() +
     (NZ() ? (() => { const z = nzZoneAt(px, py);
-      return ' · 📍' + z.name + (G.nz.zones[z.id] ? ' ✔' : ' 🎯'); })() : '') +
-    (NZ() ? ' · ⛔' + nzCap() : '') + '</span>';
+      return ' · 📍' + z.name + ' ' + nzZoneStatusLabel(z.id); })() : '') +
+    (NZ() ? ' · макс.лвл ' + nzCap() : '') + '</span>';
   const p = document.getElementById('hud-party');
   p.innerHTML = G.party.map(m => {
     const pct = Math.max(0, m.hp / m.maxHp * 100);
@@ -858,9 +858,10 @@ function collides(x, y) {
   return null;
 }
 
-async function startTrainerBattle(tr) {
-  if (G.state !== 'world') return;
-  G.state = 'battle';
+// Финальная команда тренера (с учётом «живого» соперника, если он выпал) —
+// общая логика для самого боя и для NZ-превью перед ним (см. nzConfirmBattle):
+// подменяться должна ровно та же команда, что покажем в подтверждении.
+function resolveTrainerBattle(tr) {
   let team = World.trainerTeam(tr);
   let name = tr.name;
   // «живой» соперник: реальная команда другого игрока (уровни подогнаны под местность)
@@ -879,6 +880,13 @@ async function startTrainerBattle(tr) {
     }).filter(Boolean);
     if (revived.length) team = revived;
   }
+  return { team, name };
+}
+
+async function startTrainerBattle(tr, resolved) {
+  if (G.state !== 'world') return;
+  G.state = 'battle';
+  const { team, name } = resolved || resolveTrainerBattle(tr);
   const result = await Battle.run({
     kind: 'trainer', enemyParty: team, trainerName: name,
     reward: 30 + tr.level * 12,
@@ -2114,7 +2122,12 @@ function step(dt) {
     if (hit && G.bumpCooldown <= 0) {
       if (hit.kind === 'trainer') {
         G.bumpCooldown = 1;
-        startTrainerBattle(hit.trainer);
+        if (NZ()) {
+          const resolved = resolveTrainerBattle(hit.trainer);
+          if (nzConfirmBattle(resolved.name, resolved.team)) startTrainerBattle(hit.trainer, resolved);
+        } else {
+          startTrainerBattle(hit.trainer);
+        }
         return;
       }
       if (hit.kind === 'trader') {
@@ -2127,6 +2140,8 @@ function step(dt) {
         G.bumpCooldown = 1.2;
         if (G.badges.includes(hit.master.id)) {
           toast(hit.master.name + ': «Ты уже чемпион этой арены!»');
+        } else if (NZ()) {
+          if (nzConfirmBattle(hit.master.name, World.masterTeam(hit.master))) startArenaBattle(hit.master);
         } else {
           startArenaBattle(hit.master);
         }
@@ -2449,7 +2464,7 @@ function closeShop() {
 let _shopCat = 'potions'; // активная вкладка лавки (живёт между открытиями)
 
 // Строка-витрина в категории «Особое»: name/desc/price + действие
-function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick) {
+function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick, disabled) {
   const row = document.createElement('div');
   row.className = 'srow';
   const info = document.createElement('div');
@@ -2459,7 +2474,8 @@ function shopSpecialRow(rows, name, desc, priceHtml, btnText, onClick) {
   row.appendChild(info);
   const btn = document.createElement('button');
   btn.textContent = btnText;
-  btn.onclick = onClick;
+  // вне Telegram Stars не оплатить — кнопка неактивна, чтобы не путать браузерных игроков
+  if (disabled) { btn.disabled = true; } else { btn.onclick = onClick; }
   row.appendChild(btn);
   rows.appendChild(row);
 }
@@ -2492,37 +2508,37 @@ function renderShop() {
       sprUnlocked ? '<span style="opacity:.7">куплено</span>' : SPRITE_PRICE + '⭐', 'К братве', () => { closeShop(); togglePartyPanel(); });
     shopSpecialRow(rows, '🛴 Электросамокат', 'Премиум-маунт: гоняй по суше в 1.8× быстрее. Тумблер в настройках.',
       scootUnlocked ? '<span style="opacity:.7">куплено</span>' : SCOOT_PRICE + '⭐',
-      scootUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      scootUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (scootUnlocked) { toast('🛴 Самокат уже твой — включи в настройках.'); return; }
-        if (IS_TMA) netBuyScoot(() => { toast('🛴 Электросамокат твой! Включи в настройках.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyScoot(() => { toast('🛴 Электросамокат твой! Включи в настройках.'); renderShop(); });
+      },
+      !scootUnlocked && !IS_TMA);
     shopSpecialRow(rows, '💾 Режим сейвскамера', 'Сохраняйся и откатывайся прямо в бою — переигрывай любой удар. Навсегда.',
       scumUnlocked ? '<span style="opacity:.7">куплено</span>' : SCUM_PRICE + '⭐',
-      scumUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      scumUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (scumUnlocked) { toast('💾 Уже куплено — вкл/выкл в настройках.'); return; }
-        if (IS_TMA) netBuyScum(() => { setScum(true); toast('💾 Сейвскамер твой и включён! Кнопки 💾/⏪ — в бою.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyScum(() => { setScum(true); toast('💾 Сейвскамер твой и включён! Кнопки 💾/⏪ — в бою.'); renderShop(); });
+      },
+      !scumUnlocked && !IS_TMA);
     shopSpecialRow(rows, '⚔️ Автобой', 'Тренер сам ведёт бой: атаки по эффективности, умные подмены, ускорение ×2/×3. Навсегда.',
       autoUnlocked ? '<span style="opacity:.7">куплено</span>' : AUTO_PRICE + '⭐',
-      autoUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      autoUnlocked ? 'Куплено' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (autoUnlocked) { toast('⚔️ Уже куплено — кнопки Авто и ×2 ждут в бою.'); return; }
-        if (IS_TMA) netBuyAuto(() => { toast('⚔️ Автобой твой! Кнопки Авто и ×2 — в бою.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyAuto(() => { toast('⚔️ Автобой твой! Кнопки Авто и ×2 — в бою.'); renderShop(); });
+      },
+      !autoUnlocked && !IS_TMA);
     shopSpecialRow(rows, '🏃 Автокач', 'Тренер сам бегает по дикой зоне и качает братву автобоями. Нужен Автобой. Навсегда.',
       grindUnlocked ? '<span style="opacity:.7">куплено</span>' : GRIND_PRICE + '⭐' + (autoUnlocked ? '' : ' <span style="opacity:.6">(нужен Автобой)</span>'),
-      grindUnlocked ? 'Куплено' : !autoUnlocked ? 'Нужен Автобой' : (IS_TMA ? 'Купить' : 'В Telegram'),
+      grindUnlocked ? 'Куплено' : !autoUnlocked ? 'Нужен Автобой' : (IS_TMA ? 'Купить' : '🔒 Только в Telegram'),
       () => {
         if (grindUnlocked) { toast('🏃 Уже куплено — кнопка Автокач ждёт в дикой зоне.'); return; }
         if (!autoUnlocked) { toast('🏃 Автокач идёт бандлом к Автобою — сначала купи ⚔️ Автобой.'); return; }
-        if (IS_TMA) netBuyGrind(() => { toast('🏃 Автокач твой! Кнопка появится в дикой траве и на воде.'); renderShop(); });
-        else toast('Покупка за Stars — в Telegram: @poketmons_bot');
-      });
+        netBuyGrind(() => { toast('🏃 Автокач твой! Кнопка появится в дикой траве и на воде.'); renderShop(); });
+      },
+      !grindUnlocked && !IS_TMA);
     return;
   }
 
@@ -2677,7 +2693,7 @@ function drawMiniMap(cv, tw, th, centerX, centerY) {
       const mx = (ct.x - x0) * MAP_PX, my = (ct.y - y0) * MAP_PX;
       if (mx < 20 || my < 8 || mx > cv.width - 20 || my > cv.height - 4) continue;
       const label = info.name + (typeof NZ === 'function' && NZ()
-        ? (G.nz.zones[info.id] ? ' ✔' : ' 🎯') : '');
+        ? ' ' + nzZoneStatusLabel(info.id) : '');
       c.fillStyle = 'rgba(0,0,0,0.65)';
       c.fillRect(mx - c.measureText(label).width / 2 - 3, my - 14, c.measureText(label).width + 6, 13);
       c.fillStyle = '#ffd75e';
@@ -3155,6 +3171,23 @@ function guideTypeRows() {
   }).join('');
 }
 
+// Полный свод правил Nuzlocke — первым разделом гайда, только когда режим включён
+function nzGuideRulesSection() {
+  return { id: 'nzrules', ic: '☠️', title: 'Правила Nuzlocke', html:
+    '<p>Это отдельный, хардкорный ран. Правила жёсткие и без исключений:</p>' +
+    '<p>• <b>Пермасмерть</b>: боец с 0 ОЗ после боя гибнет навсегда и уходит на ⚰️ Кладбище (вкладка в Кармане). Воскрешений нет нигде — ни у фонтана, ни зельями.<br>' +
+    '• <b>Правило встречи</b>: в каждой «области» (окрестности одного города) ловятся только <b>первые ' + NZ_ZONE_CATCHES + ' встреченных</b> диких братишки — любой исход боя тратит слот области, счётчик виден в HUD и на карте. Дубль уже пойманной эво-линии встречей не считается (жди новый вид, слот не тратится), а ✨шайни можно ловить всегда, даже когда лимит области исчерпан.<br>' +
+    '• <b>Клички обязательны</b> — каждый пойманный получает имя, без права пропустить.<br>' +
+    '• <b>Предметы в бою запрещены</b> — лечиться и применять зелья можно только вне боя; в бою доступны лишь атаки и сферы ловли.<br>' +
+    '• <b>Левел-кап</b> стартует с 15 и растёт только победами над лидерами арен — до уровня туза слабейшего непобеждённого лидера среди открытых городов. Опыт сверх капа сгорает.<br>' +
+    '• <b>Скорость передвижения ×0.5</b> и <b>шанс случайных встреч ×0.3</b> — реже влетаешь в ненужные драки.<br>' +
+    '• <b>Обменников на карте нет вовсе</b>, обмены и PvP закрыты.<br>' +
+    '• <b>Blackout</b>: если вся братва и весь карман погибли — ран окончен навсегда, без переигровки; игра покажет летопись и статистику похода.</p>' +
+    '<p><b>Отключено полностью</b>: сейвскам, автобой, автокач, самокат, генератор заказных братишек, обмены, PvP, питомник, достижения и лидерборд — премиум-бонусы за звёзды тут не работают.</p>' +
+    '<p><b>Работает и остаётся бесплатным</b>: живые соперники (тренеры с командами реальных игроков), башня, мегаэволюция, лавка (кроме звёздных витрин) — и «🖼 Свой спрайт», который в Nuzlocke открыт всем без покупки, для большей привязанности к братве.</p>' +
+    '<p>📜 Всё путешествие само складывается в <b>Летопись</b> — открой её вместо Достижений (кнопка в тач-меню или клавиша O). Она же уходит финальным текстом на экран итогов после блэкаута.</p>' };
+}
+
 function renderGuide() {
   const secs = [
     { id: 'battle', ic: '⚔️', title: 'Бой и урон', html:
@@ -3203,11 +3236,15 @@ function renderGuide() {
       '<p>🗼 Башня — серия боёв без лечения между этажами; каждый третий этаж даёт свиток. После 90 уровня это главное место кача. Потолок уровня — ' + LEVEL_CAP + '.</p>' +
       '<p>💠 Мегаэволюция: братану финальной стадии с ' + MEGA_LEVEL + ' уровня скорми мега-камень (лавка) — навсегда +35% ко всем статам и новый облик.</p>' },
   ];
+  // Nuzlocke: полные правила — первым разделом; питомник (разведение отключено) — убираем
+  const shownSecs = NZ()
+    ? [nzGuideRulesSection(), ...secs.filter(s => s.id !== 'nursery')]
+    : secs;
   const chips = document.getElementById('guide-chips');
   const body = document.getElementById('guide-body');
   chips.innerHTML = '';
   body.innerHTML = '';
-  for (const s of secs) {
+  for (const s of shownSecs) {
     const sec = document.createElement('div');
     sec.innerHTML = '<h2>' + s.ic + ' ' + s.title + '</h2>' + s.html;
     body.appendChild(sec);
@@ -3455,20 +3492,25 @@ function renderAccShop() {
 
   const buyEl = document.getElementById('shop-buy');
   buyEl.innerHTML = '';
-  if (_shopSel && !accsOwned.has(_shopSel)) {
+  if (_shopSel && !accsOwned.has(_shopSel) && IS_TMA) {
     const k = _shopSel, plainName = OUTFIT_ACCS[k].name.replace(/^\S+ /, '');
     const bb = document.createElement('button');
     bb.textContent = '⭐ Купить «' + plainName + '» за ' + ACC_PRICES[k] + '⭐';
     bb.onclick = () => {
-      if (IS_TMA) netBuyAcc(k, () => {
+      netBuyAcc(k, () => {
         toast('⭐ «' + plainName + '» твоя навсегда!');
         G.outfit[SLOT_FIELD[accSlot(k)]] = k; // купленное надевается сразу
         applyOutfit(); saveGame();
         if (G.state === 'accshop') renderAccShop();
       });
-      else toast('Аксессуары покупаются в Telegram: @poketmons_bot');
     };
     buyEl.appendChild(bb);
+  } else if (_shopSel && !accsOwned.has(_shopSel)) {
+    // вне Telegram Stars не оплатить — кнопки нет, только примерка
+    const d = document.createElement('div');
+    d.style.cssText = 'font-size:12px;opacity:.6;';
+    d.textContent = '🔒 Покупка — в Telegram-версии игры. Примерка выше бесплатна.';
+    buyEl.appendChild(d);
   } else {
     const d = document.createElement('div');
     d.style.cssText = 'font-size:12px;opacity:.6;';
@@ -3603,8 +3645,8 @@ function renderMongenBuy(status) {
       netMongenStatus(s => renderMongenBuy(s));
     });
   } else {
-    makeBtn.textContent = 'Покупка — в Telegram: @poketmons_bot';
-    makeBtn.onclick = () => toast('Открой игру в Telegram, чтобы купить.');
+    makeBtn.textContent = '🔒 Покупка — в Telegram-версии игры';
+    makeBtn.disabled = true;
   }
   box.appendChild(makeBtn);
 }

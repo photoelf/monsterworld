@@ -480,6 +480,11 @@ const Battle = {
     sfx('enc');
     dexSee(enemyParty[ei]);
     if (opts.envText) await this.say(opts.envText);
+    // Nuzlocke: чётко предупредить, что эта встреча ловится (в счёт лимита
+    // области или шайни) — до того, как игрок решит, ввязываться ли в бой
+    if (opts.nzCatch && opts.nzCatch.ok) {
+      await this.say('🎯 Братишка из этой области — можно попробовать поймать!');
+    }
     if (opts.kind === 'trainer') {
       await this.say(opts.trainerName + ' хочет сразиться!');
       await this.say(opts.trainerName + ' отправляет в бой ' + monName(enemyParty[ei]) + '!');
