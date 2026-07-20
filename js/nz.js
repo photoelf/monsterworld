@@ -126,9 +126,24 @@ function nzCloseLog() {
   G.state = 'world';
 }
 
+// Премиум-автоматизации «липкие» в localStorage — живут вне сейва, привязаны к
+// устройству, а не к конкретному слоту. Включённый в обычном режиме автобой
+// (Battle._auto) переживает переключение на Nuzlocke: UI-кнопки в бою спрятаны
+// (updateAutoBtns проверяет NZ()), но сам флаг остаётся true и боевой цикл
+// (battle.js) продолжает жать «Атаку» за игрока — при пермасмерти это критично.
+// Автокач и сейвскам сами себя не заводят в NZ (setGrind проверяет NZ(), кнопки
+// сейвскама скрыты и других входов у него нет), но на всякий случай гасим и их.
+function nzForcePremiumOff() {
+  if (!NZ()) return;
+  if (typeof Battle !== 'undefined' && Battle._auto) Battle.setAuto(false);
+  if (typeof GRIND_ON !== 'undefined' && GRIND_ON && typeof setGrind === 'function') setGrind(false, true);
+  if (typeof SCUM_ON !== 'undefined' && SCUM_ON && typeof setScum === 'function') setScum(false);
+}
+
 // Туч-меню в NZ: 🏆 Достижения → 📜 Летопись, 🤝 Обмен/PvP скрыт.
 // Зовётся из loadGame/newWorld при входе в мир.
 function nzApplyMenuMode() {
+  nzForcePremiumOff();
   const ach = document.querySelector('#touch-menu .tbtn[data-panel="ach"], #touch-menu .tbtn[data-panel="nzlog"]');
   const friend = document.querySelector('#touch-menu .tbtn[data-panel="friend"]');
   const legend = document.getElementById('hint');
