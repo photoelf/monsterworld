@@ -2131,8 +2131,8 @@ function step(dt) {
         return;
       }
       if (hit.kind === 'trader') {
+        // NZ сюда не попадёт: World.traderAt возвращает null при NZ() — обменники не спавнятся вовсе
         G.bumpCooldown = 1.2;
-        if (NZ()) { toast('☠️ Nuzlocke: обмены запрещены — своя ноша ближе.'); return; }
         openTrade(hit.trader);
         return;
       }
