@@ -779,7 +779,7 @@ function waterNearby() {
 // без учёта того, нажато ли ускорение: 'scooter' | 'brother' | null
 function landMountKind() {
   if (World.tileAt(Math.floor(G.player.x), Math.floor(G.player.y)) === T.WATER) return null;
-  if (scootUnlocked && G.scootOn) return 'scooter';
+  if (!NZ() && scootUnlocked && G.scootOn) return 'scooter';
   const lead = G.party.find(m => m.hp > 0);
   if (lead && lead.stage >= 2) return 'brother';
   return null;
@@ -798,7 +798,7 @@ function activeMount() {
     return w ? { kind: 'water', mon: w, mult: 1 } : null;
   }
   if (!keys.has('Shift')) return null;  // на суше маунт только при включённом ускорении
-  if (scootUnlocked && G.scootOn) return { kind: 'scooter', mult: 1.8 };
+  if (!NZ() && scootUnlocked && G.scootOn) return { kind: 'scooter', mult: 1.8 };
   const lead = G.party.find(m => m.hp > 0);
   if (lead && lead.stage >= 2) return { kind: 'brother', mon: lead, mult: 1.5 };
   return null;
@@ -1251,6 +1251,7 @@ function onTileEnter(tx, ty) {
   if (G.repelSteps > 0) return; // репеллент: случайные дикие не лезут (святилища/гнёзда выше — их не глушит)
   let chance = ENCOUNTER_CHANCE[World.tileAt(tx, ty)];
   if (chance && G.phase === 'night') chance *= 1.3;
+  if (chance && NZ()) chance *= 0.3;   // Nuzlocke: реже случайные бои
   if (chance && Math.random() < chance && G.party.some(m => m.hp > 0)) {
     startWildBattle(tx, ty);
   }
@@ -2055,7 +2056,7 @@ function step(dt) {
 
   const p = G.player;
   const mount = activeMount();
-  const speed = (keys.has('Shift') ? 8.6 : 5.2) * (mount ? mount.mult : 1);  // Shift — бег, маунт — множитель
+  const speed = (keys.has('Shift') ? 8.6 : 5.2) * (mount ? mount.mult : 1) * (NZ() ? 0.5 : 1);  // Shift — бег, маунт — множитель, NZ — половинная скорость
   p.moving = !!(vx || vy);
   if (p.moving) {
     // спрайт смотрит вдоль доминирующей оси (важно для плавного джойстика)
