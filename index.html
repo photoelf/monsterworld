@@ -435,9 +435,20 @@
     <h1 id="title-logo">КАРМАННАЯ<br>БРАТВА</h1>
     <div id="title-nick"></div>
     <button id="btn-continue" class="hidden">Продолжить</button>
+    <button id="btn-continue-nz" class="hidden">☠️ Продолжить Nuzlocke</button>
     <div class="title-row">
       <button id="btn-new">Новый мир</button>
       <input type="text" id="seed-input" placeholder="сид мира">
+    </div>
+    <label style="font-size:14px;display:flex;gap:6px;align-items:center;cursor:pointer;">
+      <input type="checkbox" id="nz-check"> ☠️ Режим Nuzlocke
+    </label>
+    <div id="nz-rules" class="hidden" style="font-size:12px;opacity:.85;max-width:min(420px,92vw);text-align:left;line-height:1.5;border:1px solid var(--ui-border);border-radius:6px;padding:8px 10px;">
+      Жёсткие правила улицы: братишка с 0 ОЗ <b>погибает навсегда</b>; в каждой
+      области можно поймать <b>только первого</b> встреченного (дубли не в счёт,
+      ✨шайни — всегда можно); каждому — <b>кличка</b>; предметы в бою запрещены;
+      левел-кап растёт победами над лидерами. Пали все — ран окончен.
+      <b>Купленные за звёзды бонусы тут не работают.</b> Зато «Свой спрайт» — бесплатно.
     </div>
     <div class="title-row">
       <button id="btn-import">Импорт сейва</button>
@@ -743,6 +754,7 @@
 <script src="js/data.js"></script>
 <script src="js/world.js"></script>
 <script src="js/battle.js"></script>
+<script src="js/nz.js"></script>
 <script src="js/main.js"></script>
 <script src="js/pvp.js"></script>
 </body>

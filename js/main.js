@@ -131,7 +131,19 @@ function dexCaught(m) {
   if (m.shiny) G.dex.shiny.add(m.speciesSeed);
 }
 
-const SAVE_KEY = 'monsterworld-save-v1';
+// Два слота сейва: основной и Nuzlocke. Активный выбирается на титуле,
+// mw-slot запоминает выбор; tg.js льёт в облако чанки со своим префиксом.
+const SAVE_KEY_MAIN = 'monsterworld-save-v1';
+const SAVE_KEY_NZ = 'monsterworld-save-nz1';
+let SAVE_SLOT = (() => {
+  try { return localStorage.getItem('mw-slot') === 'nz' ? 'nz' : 'main'; } catch (e) { return 'main'; }
+})();
+let SAVE_KEY = SAVE_SLOT === 'nz' ? SAVE_KEY_NZ : SAVE_KEY_MAIN;
+function setSaveSlot(slot) {
+  SAVE_SLOT = slot === 'nz' ? 'nz' : 'main';
+  SAVE_KEY = SAVE_SLOT === 'nz' ? SAVE_KEY_NZ : SAVE_KEY_MAIN;
+  try { localStorage.setItem('mw-slot', SAVE_SLOT); } catch (e) {}
+}
 const keys = new Set();
 let canvas, ctx;
 
@@ -542,6 +554,8 @@ function buildSaveData() {
     outfit: G.outfit,
     scootOn: G.scootOn,
     hints: G.hints,
+    nuzlocke: !!G.nuzlocke,
+    nz: G.nuzlocke ? G.nz : undefined,
   };
 }
 
@@ -572,8 +586,8 @@ function importSaveCode(code) {
   if (!data || data.seed === undefined || !Array.isArray(data.party) || !data.party.length) {
     return 'Код прочитан, но данные повреждены.';
   }
-  try { localStorage.setItem(SAVE_KEY, JSON.stringify(data)); } catch (e) {}
-  return null; // успех
+  try { localStorage.setItem(data.nuzlocke ? SAVE_KEY_NZ : SAVE_KEY_MAIN, JSON.stringify(data)); } catch (e) {}
+  return { nz: !!data.nuzlocke }; // успех
 }
 
 function loadGame() {
@@ -626,6 +640,8 @@ function loadGame() {
   applyOutfit();
   G.scootOn = data.scootOn !== false;   // включён по умолчанию (если куплен)
   G.hints = data.hints || {};
+  G.nuzlocke = !!data.nuzlocke;
+  G.nz = G.nuzlocke ? nzLoadState(data.nz) : null;
   GROWTH_QUEUE.length = 0;   // очередь умений держит ссылки на старые объекты братвы
   resetFollower();
   return true;
@@ -647,7 +663,7 @@ function findSpawn() {
   return { x: 0.5, y: 0.5 };
 }
 
-function newWorld(seedText) {
+function newWorld(seedText, nz) {
   G.seed = seedText ? strSeed(seedText) : (Math.random() * 4294967296) >>> 0;
   World.init(G.seed);
   G.party = [];
@@ -683,6 +699,9 @@ function newWorld(seedText) {
   G.scootOn = true;
   G.hints = {};
   GROWTH_QUEUE.length = 0;
+  G.nuzlocke = !!nz;
+  G.nz = nz ? nzFreshState() : null;
+  if (nz) nzLog('start', { seed: G.seed });
   G.spawn = findSpawn();
   G.player.x = G.spawn.x; G.player.y = G.spawn.y;
   resetFollower();
@@ -4223,15 +4242,35 @@ function initInput() {
 
 function initTitle() {
   const hasSave = (() => {
-    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY)); return d && d.party && d.party.length; }
+    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY_MAIN)); return d && d.party && d.party.length; }
     catch (e) { return false; }
   })();
   if (hasSave) document.getElementById('btn-continue').classList.remove('hidden');
+  const hasNzSave = (() => {
+    try { const d = JSON.parse(localStorage.getItem(SAVE_KEY_NZ)); return d && d.party && d.party.length; }
+    catch (e) { return false; }
+  })();
+  if (hasNzSave) document.getElementById('btn-continue-nz').classList.remove('hidden');
+  document.getElementById('nz-check').onchange = e =>
+    document.getElementById('nz-rules').classList.toggle('hidden', !e.target.checked);
+  document.getElementById('btn-continue-nz').onclick = () => {
+    setSaveSlot('nz');
+    if (loadGame()) {
+      document.getElementById('title').classList.add('hidden');
+      if (NZ() && G.nz.over) { nzGameOver(); return; }   // ран уже мёртв — экран итогов (Task 5)
+      G.state = 'world';
+      updateHUD();
+      toast('☠️ Nuzlocke продолжается. Береги братву.');
+    }
+  };
 
   document.getElementById('btn-new').onclick = () => {
-    newWorld(document.getElementById('seed-input').value.trim());
+    const nz = document.getElementById('nz-check').checked;
+    setSaveSlot(nz ? 'nz' : 'main');
+    newWorld(document.getElementById('seed-input').value.trim(), nz);
   };
   document.getElementById('btn-continue').onclick = () => {
+    setSaveSlot('main');
     if (loadGame()) {
       document.getElementById('title').classList.add('hidden');
       G.state = 'world';
@@ -4281,11 +4320,12 @@ function initTitle() {
   };
   document.getElementById('btn-import').onclick = () => {
     const code = document.getElementById('import-code').value;
-    const err = importSaveCode(code);
-    if (err) {
-      document.getElementById('import-error').textContent = err;
+    const r = importSaveCode(code);
+    if (typeof r === 'string') {
+      document.getElementById('import-error').textContent = r;
       return;
     }
+    setSaveSlot(r.nz ? 'nz' : 'main');
     if (loadGame()) {
       document.getElementById('title').classList.add('hidden');
       G.state = 'world';

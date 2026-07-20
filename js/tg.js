@@ -90,40 +90,47 @@ function csRemove(keys) {
   return new Promise((res, rej) => TG.CloudStorage.removeItems(keys, (e, ok) => e ? rej(e) : res(ok)));
 }
 
-// Залить текущий localStorage-сейв в облако
+function cloudSlotKeys(slot) {
+  return slot === 'nz'
+    ? { local: SAVE_KEY_NZ, pre: 'nz' }
+    : { local: SAVE_KEY_MAIN, pre: 'sv' };
+}
+
+// Залить сейв АКТИВНОГО слота в облако
 async function cloudUpload() {
-  const raw = localStorage.getItem(SAVE_KEY);
+  const { local, pre } = cloudSlotKeys(SAVE_SLOT);
+  const raw = localStorage.getItem(local);
   if (!raw) return;
   const enc = b64e(raw);
   const n = Math.ceil(enc.length / CLOUD_CHUNK);
   const jobs = [];
   for (let i = 0; i < n; i++) {
-    jobs.push(csSet('sv_' + i, enc.slice(i * CLOUD_CHUNK, (i + 1) * CLOUD_CHUNK)));
+    jobs.push(csSet(pre + '_' + i, enc.slice(i * CLOUD_CHUNK, (i + 1) * CLOUD_CHUNK)));
   }
   await Promise.all(jobs);
-  await csSet('sv_meta', JSON.stringify({ n, ts: Date.now(), len: enc.length }));
+  await csSet(pre + '_meta', JSON.stringify({ n, ts: Date.now(), len: enc.length }));
   // подчистить хвосты от более длинного старого сейва
   let meta0 = null;
-  try { meta0 = JSON.parse(await csGet('sv_meta_prev')); } catch (e) {}
+  try { meta0 = JSON.parse(await csGet(pre + '_meta_prev')); } catch (e) {}
   if (meta0 && meta0.n > n) {
     const stale = [];
-    for (let i = n; i < meta0.n; i++) stale.push('sv_' + i);
+    for (let i = n; i < meta0.n; i++) stale.push(pre + '_' + i);
     csRemove(stale).catch(() => {});
   }
-  csSet('sv_meta_prev', JSON.stringify({ n })).catch(() => {});
+  csSet(pre + '_meta_prev', JSON.stringify({ n })).catch(() => {});
 }
 
-// Скачать облачный сейв: {json, ts} | null
-async function cloudDownload() {
+async function cloudDownload(slot) {
+  const { pre } = cloudSlotKeys(slot);
   let meta = null;
-  try { meta = JSON.parse(await csGet('sv_meta')); } catch (e) { return null; }
+  try { meta = JSON.parse(await csGet(pre + '_meta')); } catch (e) { return null; }
   if (!meta || !meta.n) return null;
   const keys = [];
-  for (let i = 0; i < meta.n; i++) keys.push('sv_' + i);
+  for (let i = 0; i < meta.n; i++) keys.push(pre + '_' + i);
   const parts = await csGetMany(keys);
   let enc = '';
   for (let i = 0; i < meta.n; i++) {
-    const p = parts['sv_' + i];
+    const p = parts[pre + '_' + i];
     if (!p) return null; // битый сейв — не трогаем локальный
     enc += p;
   }
@@ -146,25 +153,27 @@ function cloudFlush() {
   cloudUpload().catch(() => {}).finally(() => { _cloudBusy = false; });
 }
 
-// При запуске: если облачный сейв свежее локального (или локального нет) — берём облачный
+// При запуске синкаем ОБА слота: на новом устройстве появляются обе кнопки
 async function cloudSyncOnLaunch() {
-  const cloud = await cloudDownload();
-  if (!cloud) return;
-  let localTs = -1;
-  try {
-    const d = JSON.parse(localStorage.getItem(SAVE_KEY));
-    if (d && d.party && d.party.length) localTs = d.ts || 0;
-  } catch (e) {}
-  if (cloud.ts > localTs) {
+  for (const slot of ['main', 'nz']) {
+    const { local } = cloudSlotKeys(slot);
+    const cloud = await cloudDownload(slot).catch(() => null);
+    if (!cloud) continue;
+    let localTs = -1;
     try {
-      const cd = JSON.parse(cloud.json);
-      if (!cd || !cd.party || !cd.party.length) return;
-      localStorage.setItem(SAVE_KEY, cloud.json);
-    } catch (e) { return; }
-    // игрок ещё на титуле — показать «Продолжить» и сказать про облако
-    if (G.state === 'title') {
-      document.getElementById('btn-continue').classList.remove('hidden');
-      toast('☁️ Сейв загружен из облака Telegram');
+      const d = JSON.parse(localStorage.getItem(local));
+      if (d && d.party && d.party.length) localTs = d.ts || 0;
+    } catch (e) {}
+    if (cloud.ts > localTs) {
+      try {
+        const cd = JSON.parse(cloud.json);
+        if (!cd || !cd.party || !cd.party.length) continue;
+        localStorage.setItem(local, cloud.json);
+      } catch (e) { continue; }
+      if (G.state === 'title') {
+        document.getElementById(slot === 'nz' ? 'btn-continue-nz' : 'btn-continue').classList.remove('hidden');
+        toast('☁️ Сейв загружен из облака Telegram');
+      }
     }
   }
 }
