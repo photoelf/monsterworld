@@ -104,3 +104,79 @@ function nzOnStarter(m) {
   nzForceNick(m);
   nzLog('name', { sp: m.speciesSeed, nick: m.nick, starter: 1 });
 }
+
+// Запомнить, кто добил бойца (зовётся из battle.js в момент нокаута)
+function nzNoteFaint(pm, em, opts) {
+  if (!NZ()) return;
+  pm.nzKiller = (opts.kind === 'trainer' ? (opts.trainerName || 'тренер') + ': ' : 'дикий ')
+    + monSpeciesName(em) + ' (ур.' + em.level + ')';
+  pm.nzPlace = opts.foe === 'tower' ? 'башня испытаний'
+    : 'обл. ' + nzZoneAt(G.player.x, G.player.y).name;
+}
+
+function nzBury(m) {
+  G.nz.graveyard.push({
+    mon: dumpOwnedMon(m),
+    caughtLvl: m.nzCaughtLvl || 1,
+    diedLvl: m.level,
+    battles: m.nzBattles | 0,
+    killer: m.nzKiller || 'неизвестный злодей',
+    place: m.nzPlace || 'дикие места',
+    ts: Date.now(),
+  });
+  G.nz.stats.deaths++;
+  nzLog('death', { nick: monName(m), sp: m.speciesSeed, lvl: m.level,
+    killer: m.nzKiller || 'неизвестный злодей', place: m.nzPlace || 'дикие места' });
+}
+
+// Общий пост-боевой обряд. true = блэкаут (вызывающий afterBattle прерывается).
+function nzAfterBattle(result) {
+  G.nz.stats.battles++;
+  for (const m of G.party) m.nzBattles = (m.nzBattles | 0) + 1;
+  const dead = G.party.filter(m => m.hp <= 0);
+  for (const m of dead) nzBury(m);
+  if (dead.length) {
+    G.party = G.party.filter(m => m.hp > 0);
+    toast('⚰️ Братва хоронит ' + (dead.length === 1 ? monName(dead[0]) : dead.length + ' своих') + '. Навсегда.');
+  }
+  if (!G.party.some(m => m.hp > 0) && !G.storage.some(m => m.hp > 0)) {
+    nzGameOver();   // блэкаут: вся братва и карман мертвы
+    return true;
+  }
+  if (!G.party.length) {
+    while (G.party.length < 6) {
+      const i = G.storage.findIndex(m => m.hp > 0);
+      if (i === -1) break;
+      G.party.push(G.storage.splice(i, 1)[0]);
+    }
+    toast('Из кармана подтягивается подмога. Держитесь, братья.');
+  }
+  return false;
+}
+
+// Кладбище: грейскейл-спрайты и эпитафии; сортировка и кнопки Кармана скрыты
+function nzRenderGraveyard() {
+  document.getElementById('storage-sort').innerHTML = '';
+  document.getElementById('storage-info').textContent = G.nz.graveyard.length
+    ? 'Здесь лежат братья, отдавшие всё. ' + G.nz.graveyard.length + ' могил.'
+    : 'Пока пусто. Пусть так и останется.';
+  const rows = document.getElementById('storage-rows');
+  rows.innerHTML = '';
+  for (const e of [...G.nz.graveyard].reverse()) {
+    const m = reviveOwnedMon(e.mon);
+    const row = document.createElement('div');
+    row.className = 'srow';
+    const cv = monMiniCanvas(m, 28);
+    cv.style.filter = 'grayscale(1) brightness(.75)';
+    row.appendChild(cv);
+    const info = document.createElement('div');
+    info.className = 'info';
+    const d = new Date(e.ts);
+    info.innerHTML = '<span class="nm">🕯 ' + monName(m) + '</span>' +
+      '<div style="opacity:.8;font-size:11px;line-height:1.5">Прожил с ' + e.caughtLvl + ' по ' + e.diedLvl +
+      ' ур., боёв: ' + e.battles + '.<br>Пал: ' + e.killer + ' — ' + e.place +
+      ' · ' + d.getDate() + '.' + (d.getMonth() + 1) + '</div>';
+    row.appendChild(info);
+    rows.appendChild(row);
+  }
+}

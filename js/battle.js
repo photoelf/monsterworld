@@ -720,6 +720,7 @@ const Battle = {
           // без этой ветки бой возвращал 'win' с мёртвой командой: afterBattle не
           // лечил и не телепортировал, автокач бежал дальше, а следующий бой падал
           // с TypeError (firstAlive = -1). Отключка сильнее победы.
+          if (typeof nzNoteFaint === 'function' && party[pi].hp <= 0) nzNoteFaint(party[pi], enemyParty[ei], opts);
           result = this.firstAlive(party) === -1 ? 'lose' : 'win';
           break battleLoop;
         }
@@ -727,6 +728,7 @@ const Battle = {
       if (party[pi].hp <= 0) {
         sfx('faint');
         await this.say(monName(party[pi]) + ' теряет сознание!');
+        if (typeof nzNoteFaint === 'function') nzNoteFaint(party[pi], enemyParty[ei], opts);
         const alive = this.firstAlive(party);
         if (alive === -1) {
           result = 'lose';

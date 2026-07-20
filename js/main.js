@@ -494,6 +494,7 @@ function dumpOwnedMon(m) {
     exp: m.exp, hp: m.hp, moves: m.moves, status: m.status || null,
     shiny: !!m.shiny, mega: !!m.mega, nick: m.nick || null, charm: m.charm || null,
     customSprite: m.customSprite || null, palette: m.palette || null,
+    nzCaughtLvl: m.nzCaughtLvl || undefined, nzBattles: m.nzBattles || undefined,
   };
 }
 
@@ -507,6 +508,7 @@ function reviveOwnedMon(md) {
     exp: md.exp, hp: md.hp, moves, status: md.status || null,
     shiny: !!md.shiny, nick: safeNick(md.nick), charm: md.charm || null,
     customSprite: validCustomSprite(md.customSprite), palette: validPalette(md.palette),
+    nzCaughtLvl: md.nzCaughtLvl | 0 || undefined, nzBattles: md.nzBattles | 0 || undefined,
   };
   // мега только у финальной стадии с MEGA_LEVEL — импортированный код не подделает
   m.mega = !!md.mega && m.stage === getSpecies(m.speciesSeed).chainLen - 1 && m.level >= MEGA_LEVEL;
@@ -977,6 +979,7 @@ function nearestFountain() {
 }
 
 function afterBattle(result) {
+  if (NZ() && nzAfterBattle(result)) return;   // блэкаут показал свой экран
   if (result === 'lose') {
     if (GRIND_ON) setGrind(false, true); // братва откисла — автокач стоп
     if (Battle._auto) Battle.setAuto(false); // и автобой тоже: не жечь братву заново
@@ -1695,8 +1698,21 @@ const BOX_SORTS = [
 ];
 let boxSort = localStorage.getItem('mw-box-sort') || 'date';
 let boxSortAsc = (localStorage.getItem('mw-box-sort-asc') ?? '1') === '1';
+let _nzStorageTab = 'box';
 
 function renderStorage() {
+  const tabs = document.getElementById('storage-tabs');
+  tabs.innerHTML = '';
+  if (NZ()) {
+    for (const [id, label] of [['box', '📦 Карман'], ['grave', '⚰️ Кладбище (' + G.nz.graveyard.length + ')']]) {
+      const b = document.createElement('button');
+      b.textContent = label;
+      b.style.opacity = _nzStorageTab === id ? '1' : '.55';
+      b.onclick = () => { _nzStorageTab = id; renderStorage(); };
+      tabs.appendChild(b);
+    }
+    if (_nzStorageTab === 'grave') { nzRenderGraveyard(); return; }
+  } else { _nzStorageTab = 'box'; }
   document.getElementById('storage-info').textContent =
     G.storage.length ? 'В кармане: ' + G.storage.length + '. Отсюда можно брать в братву, для яиц и обменов.' :
     'Пусто. Сюда попадают пойманные при полной братве — и кого сам уберёшь из братвы.';
