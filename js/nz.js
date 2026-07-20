@@ -32,3 +32,75 @@ function nzLog(kind, data) {
 
 // Временная заглушка — заменится в Task 5 (экран итогов рана).
 function nzGameOver() { toast('Ран окончен.'); }
+
+// «Область» = Вороной-ячейка ЖИВОГО города: мёртвые ячейки (центр в воде)
+// детерминированно прилипают к ближайшему живому центру. Имя и id — как у
+// World.nearestCityCenter (те же поля лениво дописываются в кэш-объект).
+function nzZoneAt(x, y) {
+  const cellX = Math.floor(x / CITY_CELL), cellY = Math.floor(y / CITY_CELL);
+  let best = null, bd = Infinity;
+  for (let r = 1; r <= 4 && !best; r++) {
+    for (let dy = -r; dy <= r; dy++) {
+      for (let dx = -r; dx <= r; dx++) {
+        const c = World.cityCenter(cellX + dx, cellY + dy);
+        if (c.dead) continue;
+        const d = (c.x - x) * (c.x - x) + (c.y - y) * (c.y - y);
+        if (d < bd) { bd = d; best = c; }
+      }
+    }
+  }
+  if (!best) return { id: 'C0', name: 'Глухомань', x: 0, y: 0 };
+  if (!best.id) {
+    best.id = 'C' + best.x + ',' + best.y;
+    best.name = cityName(hash2u(best.x, best.y, World.seed ^ 0xC173));
+  }
+  return best;
+}
+
+// Статус дикого боя по правилам Nuzlocke (вызывается ДО Battle.run)
+function nzEncounterInfo(x, y, wild) {
+  const zone = nzZoneAt(x, y);
+  if (wild.shiny) return { zone, kind: 'shiny', catch: { ok: true } };            // Shiny Clause
+  if (G.nz.zones[zone.id]) return { zone, kind: 'used', catch: { ok: false, why: 'встреча области уже была' } };
+  if (G.nz.lineages.includes(wild.speciesSeed))
+    return { zone, kind: 'dupe', catch: { ok: false, why: 'такой уже есть в семье' } };  // Dupes Clause
+  return { zone, kind: 'enc', catch: { ok: true } };
+}
+
+// После дикого боя: пометить область, записать летопись, оформить поимку
+function nzAfterWild(enc, wild, result) {
+  if (!NZ() || !enc) return;
+  if (enc.kind === 'enc') {
+    G.nz.zones[enc.zone.id] = 'used';
+    nzLog('meet', { sp: wild.speciesSeed, st: wild.stage, lvl: wild.level, zn: enc.zone.name,
+      out: result === 'caught' ? 'c' : result === 'run' ? 'r' : result === 'lose' ? 'l' : 'k' });
+  }
+  if (result === 'caught') {
+    if (!G.nz.lineages.includes(wild.speciesSeed)) G.nz.lineages.push(wild.speciesSeed);
+    G.nz.stats.catches++;
+    wild.nzCaughtLvl = wild.level;
+    nzForceNick(wild);
+    nzLog('name', { sp: wild.speciesSeed, nick: wild.nick });
+  }
+  saveGame();
+}
+
+// Кличка обязательна (боевой экран уже закрыт — нативный prompt безопасен)
+function nzForceNick(m) {
+  let nn = '';
+  for (let tries = 0; tries < 5 && !nn; tries++) {
+    const raw = prompt('☠️ Nuzlocke: дай кличку новому братишке — теперь это семья.', m.nick || '');
+    nn = (raw === null ? '' : raw).trim().slice(0, 12);
+  }
+  m.nick = nn || ('Брат-' + (G.nz.stats.catches + 1));   // упёрся — кличка от братвы
+}
+
+// Стартер: первый член семьи (кличка + линия занята + запись в летопись)
+function nzOnStarter(m) {
+  if (!NZ()) return;
+  m.nzCaughtLvl = m.level;
+  if (!G.nz.lineages.includes(m.speciesSeed)) G.nz.lineages.push(m.speciesSeed);
+  G.nz.stats.catches++;
+  nzForceNick(m);
+  nzLog('name', { sp: m.speciesSeed, nick: m.nick, starter: 1 });
+}

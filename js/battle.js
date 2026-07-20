@@ -502,9 +502,11 @@ const Battle = {
       } else {
         const actions = [
           { label: 'Атака' },
-          opts.kind === 'wild'
-            ? { label: 'Поймать', small: 'сфер: ' + ballsTotal(G.balls), disabled: ballsTotal(G.balls) < 1 }
-            : { label: 'Поймать', small: 'нельзя: чужой', disabled: true },
+          opts.kind !== 'wild'
+            ? { label: 'Поймать', small: 'нельзя: чужой', disabled: true }
+            : (opts.nzCatch && !opts.nzCatch.ok)
+              ? { label: 'Поймать', small: '☠️ ' + opts.nzCatch.why, disabled: true }
+              : { label: 'Поймать', small: 'сфер: ' + ballsTotal(G.balls), disabled: ballsTotal(G.balls) < 1 },
           { label: 'Предметы' },
           { label: 'Братва' },
           { label: 'Бежать' },

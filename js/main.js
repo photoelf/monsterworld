@@ -438,7 +438,9 @@ function updateHUD() {
     (G.repelSteps > 0 ? ' · 🚫 ' + G.repelSteps : '') +
     (G.quest ? ' · 📋 ' + G.quest.progress + '/' + G.quest.need : '') +
     ' · x:' + px + ' y:' + py + ' · ур. диких ~' + World.levelAt(px, py) +
-    (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() + '</span>';
+    (() => { const c = World.cityInfoAt(px, py); return c ? ' · 🏙️ ' + c.name : ''; })() +
+    (NZ() ? (() => { const z = nzZoneAt(px, py);
+      return ' · 📍' + z.name + (G.nz.zones[z.id] ? ' ✔' : ' 🎯'); })() : '') + '</span>';
   const p = document.getElementById('hud-party');
   p.innerHTML = G.party.map(m => {
     const pct = Math.max(0, m.hp / m.maxHp * 100);
@@ -748,6 +750,7 @@ function showStarterPick() {
     div.appendChild(info);
     div.onclick = () => {
       G.party = [makeMonster(seed, 0, 5)];
+      nzOnStarter(G.party[0]);
       dexCaught(G.party[0]);
       resetFollower();
       panel.classList.add('hidden');
@@ -921,7 +924,10 @@ async function startWildBattle(x, y, mode) {
     else if (env.rain) envText = '☔ Барабанит дождь...';
     else if (env.night) envText = '🌙 Стоит глубокая ночь...';
   }
-  const result = await Battle.run({ kind: 'wild', enemyParty: [wild], envText });
+  const nzEnc = NZ() ? nzEncounterInfo(x, y, wild) : null;
+  const result = await Battle.run({ kind: 'wild', enemyParty: [wild], envText,
+    nzCatch: nzEnc ? nzEnc.catch : null });
+  if (nzEnc) nzAfterWild(nzEnc, wild, result);
   if (mode === 'fish' && result === 'caught') questProgress('fish');
   if (mode === 'shrine' && result === 'caught') {
     G.stats.legends++;
