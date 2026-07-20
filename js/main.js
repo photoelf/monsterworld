@@ -526,6 +526,44 @@ function teamPreviewRow(m) {
   return row;
 }
 
+// Кличка новому братишке (Nuzlocke) через своё UI вместо prompt() — тот же
+// принцип, что и uiConfirm: G.state='nick' блокирует step() на время ввода.
+// Кличка обязательна (пустая строка не проходит валидацию), но Esc не
+// заставляет ретраить бесконечно — сразу даёт запасное имя от братвы.
+function uiPromptNick(m, fallback) {
+  return new Promise(resolve => {
+    const prevState = G.state;
+    G.state = 'nick';
+    document.getElementById('prompt-title').textContent = '☠️ Дай кличку новому братишке';
+    const body = document.getElementById('prompt-body');
+    body.innerHTML = '';
+    body.appendChild(teamPreviewRow(m));
+    const input = document.getElementById('prompt-input');
+    const err = document.getElementById('prompt-error');
+    const okBtn = document.getElementById('prompt-ok');
+    input.value = m.nick || '';
+    err.textContent = '';
+    document.getElementById('prompt-panel').classList.remove('hidden');
+    setTimeout(() => input.focus(), 0);
+    const finish = v => {
+      document.getElementById('prompt-panel').classList.add('hidden');
+      G.state = prevState;
+      input.onkeydown = null; okBtn.onclick = null;
+      resolve(v);
+    };
+    const submit = () => {
+      const nn = input.value.trim().slice(0, 12);
+      if (!nn) { err.textContent = 'Нужна кличка — теперь это семья!'; return; }
+      finish(nn);
+    };
+    okBtn.onclick = submit;
+    input.onkeydown = e => {
+      if (e.key === 'Enter') { e.preventDefault(); e.stopPropagation(); submit(); }
+      if (e.key === 'Escape') { e.preventDefault(); e.stopPropagation(); finish(fallback); }
+    };
+  });
+}
+
 // ===== Сохранение =====
 
 // Кастомный спрайт валиден, если это небольшой PNG data-URL
@@ -807,9 +845,9 @@ function showStarterPick() {
       '<div class="tp" style="color:' + t.color + '">' + t.ru + '</div>' +
       '<div class="tp" style="opacity:.7">' + sp.chainLen + ' стадии эволюции</div>';
     div.appendChild(info);
-    div.onclick = () => {
+    div.onclick = async () => {
       G.party = [makeMonster(seed, 0, 5)];
-      nzOnStarter(G.party[0]);
+      await nzOnStarter(G.party[0]);
       dexCaught(G.party[0]);
       resetFollower();
       panel.classList.add('hidden');
@@ -1000,7 +1038,7 @@ async function startWildBattle(x, y, mode) {
   const nzEnc = NZ() ? nzEncounterInfo(x, y, wild) : null;
   const result = await Battle.run({ kind: 'wild', enemyParty: [wild], envText,
     nzCatch: nzEnc ? nzEnc.catch : null });
-  if (nzEnc) nzAfterWild(nzEnc, wild, result);
+  if (nzEnc) await nzAfterWild(nzEnc, wild, result);
   if (mode === 'fish' && result === 'caught') questProgress('fish');
   if (mode === 'shrine' && result === 'caught') {
     G.stats.legends++;
@@ -2769,7 +2807,11 @@ function drawMiniMap(cv, tw, th, centerX, centerY) {
 function mapDims() {
   if (IS_MOBILE && window.innerHeight > window.innerWidth) {
     const tw = 150;
-    const th = Math.min(300, Math.round(tw * (window.innerHeight * 0.55) / Math.max(200, window.innerWidth - 24)));
+    // −50px высоты дисплея карты — на маленьких телефонах не влезал даже
+    // один фонтан в списке под картой (кнопки "Код сейва"/"Закрыть" теперь
+    // не занимают отдельную строку, но карта сама по себе тоже была высокой)
+    const targetH = Math.max(150, window.innerHeight * 0.55 - 50);
+    const th = Math.min(300, Math.round(tw * targetH / Math.max(200, window.innerWidth - 24)));
     return [tw, th];
   }
   return [MAP_TILES_W, MAP_TILES_H];
@@ -3747,9 +3789,12 @@ function renderMongenBuy(status) {
 // ===== Экспорт сейва =====
 
 function openExport() {
+  // раньше кнопка жила в Карте, теперь в Настройках — тот же паттерн, что
+  // у Гардероба/Гайда: закрыть панель-источник и открыть поверх мира
+  if (G.state === 'settings') { document.getElementById('settings-panel').classList.add('hidden'); G.state = 'world'; }
+  if (G.state !== 'world') return;
   saveGame();
   document.getElementById('export-code').value = exportSaveCode();
-  document.getElementById('map-panel').classList.add('hidden');
   G.state = 'export';
   document.getElementById('export-panel').classList.remove('hidden');
 }

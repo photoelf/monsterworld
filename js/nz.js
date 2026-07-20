@@ -239,7 +239,7 @@ function nzEncounterInfo(x, y, wild) {
 }
 
 // После дикого боя: пометить область, записать летопись, оформить поимку
-function nzAfterWild(enc, wild, result) {
+async function nzAfterWild(enc, wild, result) {
   if (!NZ() || !enc) return;
   if (enc.kind === 'enc') {
     G.nz.zones[enc.zone.id] = nzZoneUsed(enc.zone.id) + 1;
@@ -250,7 +250,7 @@ function nzAfterWild(enc, wild, result) {
     if (!G.nz.lineages.includes(wild.speciesSeed)) G.nz.lineages.push(wild.speciesSeed);
     G.nz.stats.catches++;
     wild.nzCaughtLvl = wild.level;
-    nzForceNick(wild);
+    await nzForceNick(wild);
     nzLog('name', { sp: wild.speciesSeed, nick: wild.nick });
     if (G.nz.stats.catches === 1) nzChapter('Первая поимка рана', 'catch', wild);
   }
@@ -269,23 +269,18 @@ function nzConfirmBattle(name, team) {
   return uiConfirm('⚔️ ' + name, body, '⚔️ Вызвать на бой', '‹ Отступить');
 }
 
-// Кличка обязательна (боевой экран уже закрыт — нативный prompt безопасен)
-function nzForceNick(m) {
-  let nn = '';
-  for (let tries = 0; tries < 5 && !nn; tries++) {
-    const raw = prompt('☠️ Nuzlocke: дай кличку новому братишке — теперь это семья.', m.nick || '');
-    nn = (raw === null ? '' : raw).trim().slice(0, 12);
-  }
-  m.nick = nn || ('Брат-' + (G.nz.stats.catches + 1));   // упёрся — кличка от братвы
+// Кличка обязательна — своё UI (uiPromptNick), боевой экран уже закрыт
+async function nzForceNick(m) {
+  m.nick = await uiPromptNick(m, 'Брат-' + (G.nz.stats.catches + 1));   // Esc — кличка от братвы
 }
 
 // Стартер: первый член семьи (кличка + линия занята + запись в летопись)
-function nzOnStarter(m) {
+async function nzOnStarter(m) {
   if (!NZ()) return;
   m.nzCaughtLvl = m.level;
   if (!G.nz.lineages.includes(m.speciesSeed)) G.nz.lineages.push(m.speciesSeed);
   G.nz.stats.catches++;
-  nzForceNick(m);
+  await nzForceNick(m);
   nzLog('name', { sp: m.speciesSeed, nick: m.nick, starter: 1 });
 }
 
