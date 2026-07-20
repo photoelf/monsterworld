@@ -3349,7 +3349,9 @@ function renderGuide() {
       '• <b>ЗАЩ</b> — режет входящий урон.<br>' +
       '• <b>СКР</b> — кто ходит первым; ещё помогает сбежать из боя.<br>' +
       '• <b>ПП</b> — запас применений умения. Кончились все — остаётся «Отчаянный удар» с отдачей. 🔷 Эфир восполняет всё.</p>' +
-      '<p>Опыт: слабые враги почти не качают — при разрыве больше 5 уровней опыт сильно режется. На высоких уровнях качайся в башне.</p>' },
+      '<p>Опыт: слабые враги почти не качают — при разрыве больше 5 уровней опыт сильно режется. На высоких уровнях качайся в башне.</p>' +
+      '<p>• <b>Задатки</b> — врождённые базовые ОЗ/АТК/ЗАЩ/СКР вида (видно в Братопедии). Они одинаковые что у братишки, что у братана одного вида — эволюция и уровень их не меняют, только применяют к ним множители. Реальные боевые статы конкретного бойца = задатки × множитель стадии × уровень (плюс шайни ×1.18, мега ×1.35, амулет).<br>' +
+      '• <b>💪 Мощь</b> — потолок вида одним числом, не зависит от уровня: сумма задатков × множитель ФИНАЛЬНОЙ стадии эволюции (×1 / ×1.35 / ×1.75) × 1.18 у шайни × 1.35 у мега-формы. Показывается у каждого братишки в «Братве», Кармане и Братопедии — удобно сравнивать братву разного уровня или прикидывать, стоит ли ловить редкий вид.</p>' },
     { id: 'moves', ic: '📜', title: 'Умения и их порядок', html:
       '<p>У братишки до 4 умений. В его карточке (ℹ️ в «Братве») тап по умению поднимает его выше — это тот порядок, в котором умения лежат в меню боя: любимое держи первым, чтобы не листать. На силу умений порядок не влияет.</p>' +
       '<p>Новые умения учат 📜 свитками (лавка, башня, задания) — там же в карточке.</p>' },
@@ -3859,7 +3861,8 @@ function renderDexGrid() {
     if (isCaught) {
       info.innerHTML = '<div class="nm">' + (isShiny ? '✨' : '') + sp.stages[0].name + '</div>' +
         '<div style="color:' + t.color + '">' + t.ru + '</div>' +
-        '<div style="opacity:.7">' + sp.stages.map(s => s.name).join(' → ') + '</div>';
+        '<div style="opacity:.7">' + sp.stages.map(s => s.name).join(' → ') + '</div>' +
+        '<div style="opacity:.7">💪 ' + monPotential({ speciesSeed: seed, shiny: isShiny, mega: false }) + '</div>';
       // тап по пойманному виду — открыть карточку с описанием
       card.style.cursor = 'pointer';
       card.onclick = () => openDexCard(seed);
@@ -3936,7 +3939,8 @@ function openDexCard(seed) {
   const b = st0.base;
   const stats = document.createElement('div');
   stats.style.cssText = 'font-size:12px;opacity:.85;';
-  stats.textContent = 'Задатки: ОЗ ' + b.hp + ' · АТК ' + b.atk + ' · ЗАЩ ' + b.def + ' · СКР ' + b.spd;
+  stats.textContent = 'Задатки: ОЗ ' + b.hp + ' · АТК ' + b.atk + ' · ЗАЩ ' + b.def + ' · СКР ' + b.spd +
+    ' · 💪 Мощь ' + monPotential({ speciesSeed: seed, shiny: isShiny, mega: false });
   grid.appendChild(stats);
 
   // процедурное описание
@@ -4117,7 +4121,7 @@ function renderPartyRows() {
       ' <span style="color:' + t.color + '">' + t.ru + '</span>' +
       (st.evolveLevel ? ' <span style="opacity:.6">эво на ' + st.evolveLevel + '</span>' : '') +
       '<div class="bar"><i class="' + (pct < 30 ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
-      '<div style="opacity:.75;font-size:11px">' + m.hp + '/' + m.maxHp + ' ОЗ</div>';
+      '<div style="opacity:.75;font-size:11px">' + m.hp + '/' + m.maxHp + ' ОЗ · 💪 ' + monPotential(m) + '</div>';
     row.appendChild(info);
 
     const bMore = document.createElement('button');
@@ -4170,6 +4174,8 @@ function openMonDetail(i) {
       : 'финальная форма (мега с ' + MEGA_LEVEL + ' ур.)') + '</div>' +
     '<div class="bar" style="height:8px;margin:4px 0"><i class="' + (pct < 30 ? 'low' : '') + '" style="width:' + pct + '%"></i></div>' +
     '<div style="opacity:.85">' + m.hp + '/' + m.maxHp + ' ОЗ · АТК ' + m.atk + ' · ЗАЩ ' + m.def + ' · СКР ' + m.spd + '</div>' +
+    '<div style="opacity:.7;font-size:12px">Задатки вида: ОЗ ' + sp.stages[0].base.hp + ' · АТК ' + sp.stages[0].base.atk +
+      ' · ЗАЩ ' + sp.stages[0].base.def + ' · СКР ' + sp.stages[0].base.spd + ' · 💪 Мощь ' + monPotential(m) + '</div>' +
     '<div style="opacity:.85">Опыт: ' + m.exp + '/' + expToNext(m.level) + '</div>' +
     (m.charm ? '<div style="opacity:.85">Амулет: ' + CHARMS[m.charm].ic + ' ' + CHARMS[m.charm].name + '</div>' : '');
   head.appendChild(info);
