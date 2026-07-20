@@ -72,6 +72,7 @@ const CLOUD_CHUNK = 3500;
 const NICK_KEY = 'monsterworld-nick';
 let playerNick = null;
 let _cloudTimer = null;
+let _cloudSlot = null; // слот, чей сейв ждёт заливки (фиксируется при планировании)
 let _cloudBusy = false;
 
 const b64e = s => btoa(unescape(encodeURIComponent(s)));
@@ -97,8 +98,8 @@ function cloudSlotKeys(slot) {
 }
 
 // Залить сейв АКТИВНОГО слота в облако
-async function cloudUpload() {
-  const { local, pre } = cloudSlotKeys(SAVE_SLOT);
+async function cloudUpload(slot) {
+  const { local, pre } = cloudSlotKeys(slot || SAVE_SLOT);
   const raw = localStorage.getItem(local);
   if (!raw) return;
   const enc = b64e(raw);
@@ -142,6 +143,7 @@ async function cloudDownload(slot) {
 function cloudSaveSoon() {
   if (!IS_TMA || !TG.CloudStorage) return;
   if (_cloudTimer) return;
+  _cloudSlot = SAVE_SLOT;
   _cloudTimer = setTimeout(cloudFlush, 20000);
 }
 
@@ -150,7 +152,9 @@ function cloudFlush() {
   clearTimeout(_cloudTimer);
   _cloudTimer = null;
   _cloudBusy = true;
-  cloudUpload().catch(() => {}).finally(() => { _cloudBusy = false; });
+  const slot = _cloudSlot || SAVE_SLOT;
+  _cloudSlot = null;
+  cloudUpload(slot).catch(() => {}).finally(() => { _cloudBusy = false; });
 }
 
 // При запуске синкаем ОБА слота: на новом устройстве появляются обе кнопки
