@@ -71,7 +71,10 @@ function nzLog(kind, data) {
 // ===== Летопись: процедурный худтекст =====
 // Вариант выбирается детерминированно по timestamp события — текст стабилен
 // между рендерами, но у разных событий разные формулировки.
-function nzPick(e, arr) { return arr[(e.t | 0) % arr.length]; }
+// >>> 0, не | 0: | 0 даёт ToInt32 (знаковый) — у меток времени 13-значный ms
+// часто переполняет в отрицательное число, а отрицательный % даёт arr[-N] =
+// undefined («Грумпи undefined» в летописи). >>> 0 всегда неотрицательный.
+function nzPick(e, arr) { return arr[(e.t >>> 0) % arr.length]; }
 function nzSpName(e) { return getSpecies(e.sp >>> 0).stages[e.st | 0] ? getSpecies(e.sp >>> 0).stages[e.st | 0].name : getSpecies(e.sp >>> 0).stages[0].name; }
 
 function nzLogText(e) {

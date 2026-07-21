@@ -1156,14 +1156,20 @@ function growthPanelShow(title) {
   document.getElementById('growth-panel').classList.remove('hidden');
 }
 
-function growthCloseBtn() {
+function growthCloseBtn(onClose) {
   const b = document.createElement('button');
   b.textContent = 'Закрыть';
-  b.onclick = closeGrowth;
+  b.onclick = onClose || closeGrowth;
   return b;
 }
 
-function openGrowthEvolve(m) {
+// opts (необязательно) — для эволюции эво-камнем из карточки братишки, а не
+// по уровню: opts.stone спишет камень при подтверждении, opts.onCancel рисует
+// кнопку отмены (свободная эволюция по уровню отмены не имеет — она уже
+// готова, откладывать нечего), opts.onClose переопределяет, куда вернуться
+// после «Закрыть» (по умолчанию — в мир).
+function openGrowthEvolve(m, opts) {
+  opts = opts || {};
   growthPanelShow('✨ Эволюция!');
   const sp = getSpecies(m.speciesSeed);
   const next = sp.stages[m.stage + 1];
@@ -1175,18 +1181,23 @@ function openGrowthEvolve(m) {
   stage.appendChild(oldCv);
   stage.appendChild(newCv);
   const txt = document.getElementById('growth-text');
-  txt.innerHTML = cap(stageWord(m.stage)) + ' <b style="color:var(--ui-accent)">' + monName(m) +
-    '</b> набрался опыта и готов эволюционировать в ' + stageWordAcc(m.stage + 1) + ' <b>' + next.name + '</b>!';
+  txt.innerHTML = opts.stone
+    ? '🪨 Камень пробуждает силу — <b style="color:var(--ui-accent)">' + monName(m) +
+      '</b> готов эволюционировать в ' + stageWordAcc(m.stage + 1) + ' <b>' + next.name + '</b>!'
+    : cap(stageWord(m.stage)) + ' <b style="color:var(--ui-accent)">' + monName(m) +
+      '</b> набрался опыта и готов эволюционировать в ' + stageWordAcc(m.stage + 1) + ' <b>' + next.name + '</b>!';
   const act = document.getElementById('growth-actions');
   const b = document.createElement('button');
   b.textContent = '✨ Эволюционировать';
   b.onclick = () => {
     b.disabled = true;
+    if (cancelBtn) cancelBtn.disabled = true;
     sfx('catch');
     oldCv.classList.add('grow-out');
     newCv.style.opacity = '';
     newCv.classList.add('grow-in');
     // применяем сразу, анимация — только картинка: закрытие игры эволюцию не съест
+    if (opts.stone) G.bag.stone--;
     const hadNick = !!m.nick;
     const ratio = m.maxHp ? m.hp / m.maxHp : 1;
     m.stage++;
@@ -1202,10 +1213,17 @@ function openGrowthEvolve(m) {
       txt.innerHTML = 'Невероятно! Теперь это ' + stageWord(m.stage) +
         ' <b style="color:var(--ui-accent)">' + (hadNick ? monName(m) : monSpeciesName(m)) + '</b>!';
       act.innerHTML = '';
-      act.appendChild(growthCloseBtn());
+      act.appendChild(growthCloseBtn(opts.onClose));
     }, 1500);
   };
   act.appendChild(b);
+  let cancelBtn = null;
+  if (opts.onCancel) {
+    cancelBtn = document.createElement('button');
+    cancelBtn.textContent = '‹ Отмена';
+    cancelBtn.onclick = opts.onCancel;
+    act.appendChild(cancelBtn);
+  }
 }
 
 function openGrowthMove(m, mv) {
@@ -4365,18 +4383,12 @@ function openMonDetail(i) {
     const bStone = document.createElement('button');
     bStone.textContent = '🪨 Эво-камень';
     bStone.onclick = () => {
-      if (!confirm('Эволюционировать ' + monName(m) + ' камнем? Камень исчезнет.')) return;
-      G.bag.stone--;
-      const ratio = m.hp / m.maxHp;
-      const oldName = monSpeciesName(m);
-      m.stage++;
-      recalcStats(m);
-      m.hp = Math.max(1, Math.round(m.maxHp * ratio));
-      G.stats.evolutions++;
-      dexCaught(m);
-      sfx('catch');
-      toast('🪨 ' + oldName + ' эволюционирует в ' + monSpeciesName(m) + '!');
-      rerender();
+      document.getElementById('mon-panel').classList.add('hidden');
+      openGrowthEvolve(m, {
+        stone: true,
+        onClose: () => { closeGrowth(); openMonDetail(i); },
+        onCancel: () => { closeGrowth(); openMonDetail(i); },
+      });
     };
     acts.appendChild(bStone);
   }
